@@ -59,6 +59,29 @@ class User extends Authenticatable
         return $this->hasOne(TrustScore::class);
     }
 
+    /** 사진 (sort_order 0 = 대표사진) */
+    public function photos(): HasMany
+    {
+        return $this->hasMany(ProfilePhoto::class)->orderBy('sort_order');
+    }
+
+    public function isFriendWith(int $userId): bool
+    {
+        return Friendship::where('user_id', $this->id)->where('friend_id', $userId)->exists();
+    }
+
+    /** @return array<int> */
+    public function friendIds(): array
+    {
+        return Friendship::where('user_id', $this->id)->pluck('friend_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    /** 차단 관계(양방향)인지 */
+    public function isBlockedWith(int $userId): bool
+    {
+        return in_array($userId, $this->blockedUserIds(), true);
+    }
+
     /**
      * 나와 차단 관계(내가 차단 + 나를 차단)인 사용자 ID 목록.
      * 차단은 양방향 적용이 원칙이라 두 방향을 합친다.

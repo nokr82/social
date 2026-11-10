@@ -23,6 +23,11 @@ return [
         'preview_avatars' => 5,          // 카드에 보여줄 아바타 수
     ],
 
+    // 프로필 사진 저장소: 개발은 local(storage/app/private), 운영은 r2·s3 디스크로 교체
+    'photos' => [
+        'disk' => env('PHOTO_DISK', 'local'),
+    ],
+
     // 아바타 파츠 (앱 디자인의 선택지와 1:1)
     'avatar' => [
         'colors' => ['apricot', 'mint', 'sky', 'pink', 'yellow', 'lavender'],

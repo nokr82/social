@@ -5,7 +5,10 @@ use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\PlazaController;
 use App\Http\Controllers\Api\PlazaMessageController;
+use App\Http\Controllers\Api\FriendRequestController;
+use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\SafetyController;
+use App\Http\Controllers\Api\UserProfileController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -21,6 +24,10 @@ Route::prefix('auth')->middleware('throttle:auth')->group(function () {
 });
 
 Route::get('meta/categories', [MetaController::class, 'categories']);
+
+// 사진 파일 (로컬 저장소용): 토큰 대신 서명으로 접근 → <img src>로 바로 사용
+Route::get('photos/{photo}/file', [PhotoController::class, 'file'])
+    ->middleware('signed:relative')->name('photos.file');
 Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -41,6 +48,24 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('plazas/{plaza}/leave', [PlazaController::class, 'leave']);
         Route::get('plazas/{plaza}/messages', [PlazaMessageController::class, 'index']);
         Route::post('plazas/{plaza}/messages', [PlazaMessageController::class, 'store'])->middleware('throttle:chat');
+
+        // 내 사진 (MY)
+        Route::get('me/photos', [PhotoController::class, 'index']);
+        Route::post('me/photos', [PhotoController::class, 'store'])->middleware('throttle:20,1');
+        Route::patch('me/photos/{photo}', [PhotoController::class, 'update']);
+        Route::delete('me/photos/{photo}', [PhotoController::class, 'destroy']);
+        Route::post('photos/{photo}/like', [PhotoController::class, 'like'])->middleware('throttle:60,1');
+
+        // 상대 프로필
+        Route::get('users/{user}', [UserProfileController::class, 'show']);
+
+        // 친구 요청
+        Route::get('friend-requests', [FriendRequestController::class, 'index']);
+        Route::post('friend-requests', [FriendRequestController::class, 'store']);
+        Route::post('friend-requests/{friendRequest}/accept', [FriendRequestController::class, 'accept']);
+        Route::post('friend-requests/{friendRequest}/reject', [FriendRequestController::class, 'reject']);
+        Route::post('friend-requests/{friendRequest}/undo', [FriendRequestController::class, 'undo']);
+        Route::delete('friend-requests/{friendRequest}', [FriendRequestController::class, 'destroy']);
 
         Route::get('blocks', [SafetyController::class, 'blocks']);
         Route::post('blocks', [SafetyController::class, 'block']);

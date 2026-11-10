@@ -44,10 +44,14 @@ Nov 10, 2026 · 설계서 v0.1 + 메인 디자인(광장 목록) 기준
 - 응답은 `distance_label`만: `500m 이내` / `1km 이내` / `3km 이내` / `5km 이내`
 - 검색 반경 5km, '가까운 순' 정렬
 
-## 2차로 미룬 것 (메모의 결정사항, 테이블만 설계)
+## 2차 (구현됨)
 
-| 테이블 | 핵심 컬럼 |
-|---|---|
-| profile_photos | user_id, path, visibility(public/private), like_count |
-| photo_likes | photo_id, user_id (PK 복합 — 사진당 1회, 다시 누르면 삭제) |
-| friend_requests | from_id, to_id, status(pending/accepted/rejected) — 수락 시 비공개 사진·성별·나이 공개 |
+| 테이블 | 핵심 컬럼 | 비고 |
+|---|---|---|
+| profile_photos | user_id, path, visibility, sort_order, like_count | 0번=대표(항상 공개), 최대 9장, 하트는 비정규화 |
+| photo_likes | photo_id, user_id (PK 복합) | 사진당 1회, 다시 누르면 삭제 |
+| friend_requests | from_id, to_id, status, message, plaza_id, expires_at | 7일 만료는 조회 조건으로 (크론 없음) |
+| friendships | user_id, friend_id (PK 복합), plaza_id | 양방향 2행 |
+
+- 사진 파일: `PHOTO_DISK`(개발 local → 운영 r2/s3). 공개 URL 없음, 30분 서명 URL만 발급
+- 업로드 시 EXIF(GPS) 제거: 위치 비공개 원칙 유지

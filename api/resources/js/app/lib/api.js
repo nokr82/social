@@ -17,7 +17,9 @@ export class ApiError extends Error {
 
 export async function api(method, path, body = null, { keepalive = false } = {}) {
     const headers = { Accept: 'application/json' };
-    if (body) headers['Content-Type'] = 'application/json';
+    const isForm = body instanceof FormData;
+    // FormData(파일 업로드)는 브라우저가 boundary 포함 Content-Type을 직접 붙여야 함
+    if (body && !isForm) headers['Content-Type'] = 'application/json';
     if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
     // 실시간으로 보낸 내 메시지가 나에게 중복 수신되지 않도록 (서버의 toOthers)
     if (window.Echo?.socketId?.()) headers['X-Socket-ID'] = window.Echo.socketId();
@@ -25,7 +27,7 @@ export async function api(method, path, body = null, { keepalive = false } = {})
     const res = await fetch(`/api${path}`, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
         keepalive, // 페이지를 떠날 때(광장 퇴장) 요청이 취소되지 않게
     });
 
@@ -45,3 +47,6 @@ export const get = (path) => api('GET', path);
 export const post = (path, body) => api('POST', path, body ?? {});
 export const put = (path, body) => api('PUT', path, body);
 export const del = (path) => api('DELETE', path);
+export const patch = (path, body) => api('PATCH', path, body);
+/** 파일 업로드: FormData를 그대로 보냄 */
+export const upload = (path, formData) => api('POST', path, formData);

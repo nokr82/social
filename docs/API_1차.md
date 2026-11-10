@@ -46,6 +46,23 @@
 3. 수신 이벤트 `.message.sent` / 아바타 이동은 `client-move` whisper로 앱끼리 직접 (서버 저장 없음)
 4. 실시간 메시지는 앱이 `GET /api/blocks` 목록으로 한 번 더 거름
 
+## 사진·프로필·친구 (2차)
+
+| 메서드 | 경로 | 입력 / 비고 |
+|---|---|---|
+| GET | /api/me/photos | 내 사진 전부 (url은 30분 서명 URL) |
+| POST | /api/me/photos | multipart `photo` (≤10MB, 최대 9장) — EXIF 제거·1280px 재인코딩 |
+| PATCH | /api/me/photos/{id} | visibility(public/private) · 대표(첫 장)는 비공개 불가 |
+| DELETE | /api/me/photos/{id} | 다음 사진이 대표가 되면 자동 공개 |
+| POST | /api/photos/{id}/like | 하트 토글 → `{liked, like_count}` |
+| GET | /api/users/{id} | relation(self/none/sent/received/friends), 공개 사진, 비공개 수 · 친구면 성별·나이·비공개 사진 |
+| GET | /api/friend-requests?type=received\|sent | 보낸 요청은 거절돼도 pending으로 보임 |
+| POST | /api/friend-requests | user_id, message?, plaza_id? (하루 30건) |
+| POST | /api/friend-requests/{id}/accept · reject · undo | 수락 응답에 상대 성별·나이·비공개 사진 |
+| DELETE | /api/friend-requests/{id} | 보낸 사람 취소 |
+
+`/api/me` 응답에 `stats{hearts, friends, received_requests, photos}` 추가 · 차단하면 친구 관계·요청 자동 삭제
+
 ## 안전
 
 | 메서드 | 경로 | 입력 |

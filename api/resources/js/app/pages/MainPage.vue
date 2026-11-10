@@ -14,7 +14,7 @@ import { ApiError, get } from '../lib/api';
 import { auth } from '../lib/auth';
 import { CATEGORY_GROUND } from '../lib/avatar';
 import { getLocation } from '../lib/location';
-import { comingSoon, showToast } from '../lib/toast';
+import { showToast } from '../lib/toast';
 
 const router = useRouter();
 
@@ -91,7 +91,7 @@ onBeforeUnmount(() => clearInterval(timer));
                 {{ location.label }}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
             </button>
-            <button class="me" aria-label="내 아바타" @click="comingSoon('MY')">
+            <button class="me" aria-label="내 아바타 (MY)" @click="router.push({ name: 'my' })">
                 <AvatarFace :parts="auth.me?.avatar" :size="36" />
             </button>
         </div>
@@ -138,7 +138,7 @@ onBeforeUnmount(() => clearInterval(timer));
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
 
-        <TabBar />
+        <TabBar active="plaza" />
         <CreatePlazaSheet v-if="creating" @close="creating = false" @created="onCreated" />
     </div>
 </template>

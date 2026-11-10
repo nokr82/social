@@ -7,17 +7,18 @@
  *   0 '시작하기'  = POST /auth/social   (기존 회원이면 바로 메인)
  *   1 본인인증    = POST /auth/identity (성별·나이 표시)
  *   2 다음        = POST /auth/register (계정 생성 + 토큰)
- *   3 대표사진    = 사진 기능(2차) 전까지 안내만
+ *   3 대표사진    = POST /me/photos (필수, 항상 공개)
  *
  * 개발 모드: 소셜 로그인·PASS가 가짜 드라이버라 버튼만 누르면 진행된다.
  */
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
-import { ApiError, post } from '../lib/api';
+import { ApiError, post, upload } from '../lib/api';
 import { auth } from '../lib/auth';
 import { AVATAR_COLORS, AVATAR_FACES } from '../lib/avatar';
-import { comingSoon, showToast } from '../lib/toast';
+import { uploadPhoto } from '../lib/image';
+import { showToast } from '../lib/toast';
 
 const router = useRouter();
 
@@ -28,6 +29,8 @@ const identity = ref(null);            // { gender, age }
 const avatar = reactive({ color: 'apricot', face: 'smile' });
 const nickname = ref('');
 const nicknameError = ref('');
+const photos = ref([]);         // 올린 사진 (첫 장 = 대표)
+const fileInput = ref(null);
 
 // 개발용 본인인증 입력 시트 (PASS 대행사 연동 전)
 const devSheet = reactive({ open: false, gender: 'F', birth: '1997-05-05' });
@@ -106,6 +109,16 @@ const register = () => run(async () => {
         throw e;
     }
 });
+
+/** 3: 사진 업로드 (첫 장이 대표사진) */
+async function onPick(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    await run(async () => {
+        photos.value.push(await uploadPhoto(file, upload));
+    });
+}
 
 function back() {
     // 계정이 만들어진 뒤(3단계)에는 되돌아가지 않음
@@ -232,14 +245,21 @@ function back() {
             </div>
 
             <div class="photos">
-                <button class="photo main" aria-label="대표사진 추가" @click="comingSoon('사진 등록')">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                    대표사진
-                </button>
-                <button v-for="i in 2" :key="i" class="photo" aria-label="사진 추가" @click="comingSoon('사진 등록')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                <div v-for="(p, i) in photos" :key="p.id" class="photo filled">
+                    <img :src="p.url" :alt="i === 0 ? '대표사진' : `사진 ${i + 1}`">
+                    <span v-if="i === 0" class="main-tag">대표 · 공개</span>
+                </div>
+                <button
+                    v-for="i in Math.max(0, 3 - photos.length)" :key="`add-${i}`"
+                    class="photo" :class="{ main: photos.length === 0 && i === 1 }"
+                    :aria-label="photos.length === 0 && i === 1 ? '대표사진 추가 (필수)' : '사진 추가'"
+                    :disabled="busy" @click="fileInput.click()"
+                >
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" :stroke="photos.length === 0 && i === 1 ? '#5B4BD6' : '#8A85A3'" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                    <template v-if="photos.length === 0 && i === 1">{{ busy ? '올리는 중…' : '대표사진' }}</template>
                 </button>
             </div>
+            <input ref="fileInput" type="file" accept="image/*" hidden @change="onPick">
 
             <div class="guide">
                 <b>사진 가이드</b>
@@ -248,8 +268,7 @@ function back() {
             </div>
 
             <div class="grow" />
-            <!-- 사진 기능 전까지는 건너뛸 수 있게 (출시 전 필수로 변경) -->
-            <button class="btn-primary" @click="router.replace({ name: 'main' })">광장으로 가기</button>
+            <button class="btn-primary" :disabled="!photos.length" @click="router.replace({ name: 'main' })">광장으로 가기</button>
         </section>
 
         <!-- 개발용 본인인증 시트 -->
@@ -327,6 +346,9 @@ function back() {
 .photos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .photo { height: 140px; border-radius: 18px; border: 2px dashed #CFC6FF; background: var(--c-surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
 .photo.main { border-color: var(--c-primary); color: var(--c-primary-ink); font-size: 13px; font-weight: 700; }
+.photo.filled { position: relative; border: none; overflow: hidden; }
+.photo.filled img { width: 100%; height: 100%; object-fit: cover; }
+.main-tag { position: absolute; left: 8px; top: 8px; background: #fff; color: var(--c-primary-deep); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 7px; }
 .guide { display: flex; flex-direction: column; gap: 6px; background: var(--c-surface); border-radius: 14px; padding: 12px 14px; font-size: 12px; color: var(--c-ink-2); line-height: 1.6; }
 .guide b { color: var(--c-ink); }
 

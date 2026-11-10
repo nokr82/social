@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Block;
 use App\Models\Report;
 use App\Models\User;
+use App\Services\Safety\BlockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,8 @@ use Illuminate\Validation\Rule;
  */
 class SafetyController extends Controller
 {
+    public function __construct(private readonly BlockService $blocker) {}
+
     /** POST /api/blocks  {user_id} */
     public function block(Request $request): JsonResponse
     {
@@ -27,7 +30,7 @@ class SafetyController extends Controller
             throw new DomainException('SELF_BLOCK', '자기 자신은 차단할 수 없어요');
         }
 
-        Block::query()->insertOrIgnore(['blocker_id' => $me->id, 'blocked_id' => $data['user_id'], 'created_at' => now()]);
+        $this->blocker->block($me->id, (int) $data['user_id']); // 친구 관계·요청도 함께 정리
 
         return response()->json(['status' => 'ok']);
     }
@@ -91,7 +94,7 @@ class SafetyController extends Controller
 
         // '차단도 함께'가 켜져 있으면(기본값) 차단까지
         if ($data['block'] ?? true) {
-            Block::query()->insertOrIgnore(['blocker_id' => $me->id, 'blocked_id' => $data['user_id'], 'created_at' => now()]);
+            $this->blocker->block($me->id, (int) $data['user_id']);
         }
 
         return response()->json(['status' => 'ok'], 201);

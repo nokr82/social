@@ -13,6 +13,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
+import FriendRequestSheet from '../components/FriendRequestSheet.vue';
+import HeartIcon from '../components/HeartIcon.vue';
+import LockIcon from '../components/LockIcon.vue';
 import { ApiError, api, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
 import { seededSpot } from '../lib/avatar';
@@ -30,6 +33,8 @@ const bubbles = reactive({});         // userId → 말풍선 텍스트 (5초)
 const messages = ref([]);             // 오래된 → 최신
 const blocked = ref(new Set());       // 차단 관계 사용자 (양방향)
 const selected = ref(null);           // 미니 카드로 연 사용자
+const card = ref(null);               // 미니 카드용 프로필 (GET /users/{id})
+const requesting = ref(false);
 const showMembers = ref(false);
 const draft = ref('');
 const sending = ref(false);
@@ -48,7 +53,7 @@ const STAGE_H = 300;
 const avatars = computed(() => members.value
     .filter((m) => !blocked.value.has(m.id))
     .map((m) => {
-        const pos = positions[m.id] ?? spotFor(m.id);
+        const pos = positions[m.id] ?? spotFor(m.id); // placeNew 전 한 프레임 동안의 임시 자리
         return { ...m, pos, me: m.id === meId.value, bubble: bubbles[m.id] };
     }));
 
@@ -56,6 +61,21 @@ function spotFor(userId) {
     // 아직 위치를 모르는 사람은 ID로 정해진 자리 (모든 화면에서 동일)
     const s = seededSpot(userId, 1000, 1000, 120);
     return { x: s.x / 1000, y: s.y / 1000 };
+}
+
+/**
+ * 초기 자리를 정해 저장한다. 이미 있는 아바타와 너무 가까우면(겹쳐서 누를 수 없음)
+ * 시드를 바꿔 최대 8번 다시 뽑는다. 결정적이라 모든 화면에서 같은 결과가 나온다.
+ */
+function placeNew(userId) {
+    if (positions[userId]) return;
+    const taken = Object.values(positions);
+    let spot = spotFor(userId);
+    for (let k = 1; k <= 8 && taken.some((p) => Math.abs(p.x - spot.x) < 0.2 && Math.abs(p.y - spot.y) < 0.2); k++) {
+        const s = seededSpot(userId + k * 100003, 1000, 1000, 120);
+        spot = { x: s.x / 1000, y: s.y / 1000 };
+    }
+    positions[userId] = spot;
 }
 
 /* ---------------- 입장 · 퇴장 ---------------- */
@@ -95,11 +115,12 @@ function joinChannel() {
     channel = echo.join(`plaza.${props.id}`)
         .here((users) => {
             members.value = users;
-            positions[meId.value] ??= spotFor(meId.value);
+            [...users].sort((a, b) => a.id - b.id).forEach((u) => placeNew(u.id));
             whisperMyPosition();
         })
         .joining((user) => {
             if (!members.value.some((m) => m.id === user.id)) members.value.push(user);
+            placeNew(user.id);
             pushSystem(`${user.nickname}님이 광장에 들어왔어요`);
             whisperMyPosition(); // 새로 온 사람이 내 위치를 알 수 있게
         })
@@ -157,9 +178,26 @@ function avatarStyle(a) {
     };
 }
 
-function pick(a) {
+async function pick(a) {
     if (a.me) return;
     selected.value = a;
+    card.value = null;
+    try {
+        const profile = (await get(`/users/${a.id}`)).data;
+        if (selected.value?.id === a.id) card.value = profile; // 그 사이 다른 아바타를 눌렀으면 무시
+    } catch {
+        card.value = { photos: [], private_count: 0, public_hearts: 0, relation: 'none' };
+    }
+}
+
+function onRequestSent() {
+    requesting.value = false;
+    if (card.value) card.value.relation = 'sent';
+    showToast('친구 요청을 보냈어요');
+}
+
+function openProfile(user) {
+    router.push({ name: 'profile', params: { id: user.id }, query: { from: props.id } });
 }
 
 /* ---------------- 채팅 ---------------- */
@@ -287,7 +325,10 @@ onBeforeUnmount(leave);
             <div v-if="selected" class="card" role="dialog" :aria-label="`${selected.nickname}님`">
                 <div class="card-head">
                     <AvatarFace :parts="selected.avatar" :size="36" />
-                    <b class="card-name">{{ selected.nickname }}</b>
+                    <span class="card-name">
+                        <b>{{ selected.nickname }}</b>
+                        <span v-if="card" class="card-hearts"><HeartIcon :size="13" />{{ card.public_hearts }}</span>
+                    </span>
                     <button class="mini" aria-label="신고·차단 메뉴" @click="openReport(selected)">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="#1F1B3A" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
                     </button>
@@ -295,17 +336,26 @@ onBeforeUnmount(leave);
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
                     </button>
                 </div>
-                <!-- 공개 사진·하트는 사진 기능(2차)에서 -->
+                <!-- 공개 사진 3장 + 비공개 N장(잠금) -->
                 <div class="photos">
-                    <div v-for="i in 3" :key="i" class="ph" />
-                    <div class="ph locked">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
-                        사진 준비 중
-                    </div>
+                    <template v-if="card">
+                        <button v-for="p in card.photos.slice(0, 3)" :key="p.id" class="ph" :aria-label="`${selected.nickname} 공개 사진`" @click="openProfile(selected)">
+                            <img :src="p.url" alt="" loading="lazy">
+                        </button>
+                        <div v-for="i in Math.max(0, 3 - card.photos.length)" :key="`e${i}`" class="ph" aria-hidden="true" />
+                        <div class="ph locked">
+                            <LockIcon :size="16" />
+                            비공개 {{ card.private_count }}
+                        </div>
+                    </template>
+                    <div v-for="i in (card ? 0 : 4)" :key="`s${i}`" class="ph skeleton" aria-hidden="true" />
                 </div>
                 <div class="card-actions">
-                    <button class="solid" @click="comingSoon('친구 요청')">친구 요청</button>
-                    <button class="line" @click="comingSoon('프로필')">프로필 보기</button>
+                    <button v-if="!card || card.relation === 'none'" class="solid" :disabled="!card" @click="requesting = true">친구 요청</button>
+                    <button v-else-if="card.relation === 'sent'" class="solid muted" disabled>요청 보냄</button>
+                    <button v-else-if="card.relation === 'received'" class="solid" @click="router.push({ name: 'friend-requests' })">받은 요청 보기</button>
+                    <button v-else class="solid muted" disabled>친구</button>
+                    <button class="line" @click="openProfile(selected)">프로필 보기</button>
                 </div>
             </div>
         </div>
@@ -343,6 +393,8 @@ onBeforeUnmount(leave);
                 </button>
             </form>
         </div>
+
+        <FriendRequestSheet v-if="requesting && selected" :user="selected" :plaza-id="id" @close="requesting = false" @sent="onRequestSent" />
 
         <!-- 참여자 목록 시트 -->
         <div v-if="showMembers" class="dim" @click.self="showMembers = false">
@@ -397,10 +449,15 @@ onBeforeUnmount(leave);
 
 .card { position: absolute; left: 10px; right: 10px; bottom: 10px; background: var(--c-surface); border-radius: 20px; padding: 12px; box-shadow: 0 8px 24px rgba(31,27,58,.18); display: flex; flex-direction: column; gap: 10px; cursor: default; }
 .card-head { display: flex; align-items: center; gap: 8px; }
-.card-name { flex: 1; font-size: 15px; }
+.card-name { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.card-hearts { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; color: #D63E5C; }
 .mini { width: 32px; height: 32px; border: none; background: var(--c-primary-soft); border-radius: 16px; display: flex; align-items: center; justify-content: center; }
 .photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.ph { height: 64px; border-radius: 12px; background: #EEEBFA; }
+.ph { height: 64px; border-radius: 12px; background: #EEEBFA; border: none; padding: 0; overflow: hidden; }
+.ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph.skeleton { animation: pulse 1s infinite alternate; }
+@keyframes pulse { to { opacity: .5; } }
+.solid.muted { background: #ECE8FF; color: var(--c-primary-deep); }
 .ph.locked { background: #E6E1FF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 700; color: var(--c-primary-deep); }
 .card-actions { display: flex; gap: 6px; }
 .card-actions button { flex: 1; height: 40px; border-radius: 12px; font-size: 14px; font-weight: 700; }

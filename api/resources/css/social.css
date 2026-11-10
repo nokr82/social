@@ -41,6 +41,8 @@ a { color: var(--c-primary-ink); }
 /* 스크롤바 숨김 (디자인의 .scroll) */
 .scroll { overflow-y: auto; scrollbar-width: none; }
 .scroll::-webkit-scrollbar { display: none; }
+/* 스크롤 영역(flex 세로)의 자식은 줄어들지 않게: 내용이 넘치면 줄이지 말고 스크롤 */
+.scroll > * { flex-shrink: 0; }
 
 /* 스크린리더 전용 텍스트 */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

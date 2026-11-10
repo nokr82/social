@@ -2,6 +2,9 @@
 
 namespace App\Http\Resources;
 
+use App\Models\FriendRequest;
+use App\Models\Friendship;
+use App\Models\ProfilePhoto;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,6 +24,13 @@ class MeResource extends JsonResource
             'avatar' => $this->avatar?->parts,
             'avatar_version' => $this->avatar?->version,
             'has_location' => $this->region_cell !== null,
+            // MY 상단 숫자 (디자인: 받은 하트 · 친구 · 받은 친구 요청)
+            'stats' => [
+                'hearts' => (int) ProfilePhoto::where('user_id', $this->id)->sum('like_count'), // 비공개 사진 하트 포함
+                'friends' => Friendship::where('user_id', $this->id)->count(),
+                'received_requests' => FriendRequest::alive()->where('to_id', $this->id)->where('status', FriendRequest::PENDING)->count(),
+                'photos' => ProfilePhoto::where('user_id', $this->id)->count(),
+            ],
         ];
     }
 }
