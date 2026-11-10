@@ -1,0 +1,77 @@
+# 소셜링앱 개발환경
+# 구조: 호스트 Nginx(:80) → php(127.0.0.1:9002) / reverb(127.0.0.1:8081)
+#       mariadb·redis는 내부 네트워크 전용 (DB 툴용 3307만 로컬에 열림)
+name: social
+
+# php / reverb / queue가 같은 이미지를 공유 → 한 번만 정의
+x-php: &php
+  build:
+    context: ./docker/php
+    args:
+      UID: ${UID:-1000}   # 호스트 사용자와 UID를 맞춰 파일 권한 문제 방지
+      GID: ${GID:-1000}
+  image: social-php:8.4
+  volumes:
+    - ./api:/var/www
+  restart: unless-stopped
+  networks: [social]
+
+services:
+  # Laravel API (PHP-FPM). 호스트 Nginx가 9002로 FastCGI 요청을 보냄
+  php:
+    <<: *php
+    ports:
+      - "127.0.0.1:9002:9000"   # 반드시 127.0.0.1 바인딩 (외부 노출 금지)
+
+  # 웹소켓 서버 (가상 광장, 채팅). 호스트 Nginx가 /app, /apps 경로를 8081로 프록시
+  reverb:
+    <<: *php
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      redis: { condition: service_started }
+
+  # 비동기 작업 (푸시 알림, 매칭 계산)
+  queue:
+    <<: *php
+    command: php artisan queue:work --tries=3 --timeout=90
+    depends_on:
+      mariadb: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  mariadb:
+    image: mariadb:11.8                  # 호스트와 같은 LTS
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USERNAME}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    volumes:
+      - dbdata:/var/lib/mysql            # 컨테이너를 지워도 데이터 유지
+    ports:
+      - "127.0.0.1:3307:3306"            # 호스트 MariaDB가 3306 사용 중 → 3307
+    healthcheck:                         # 이미지에 내장된 스크립트로 준비 완료 확인
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [social]
+
+  redis:
+    image: redis:7-alpine
+    # 비밀번호 + AOF(재시작해도 큐 작업이 남도록)
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    networks: [social]                   # 포트 미공개: 내부에서 'redis'로만 접속
+
+networks:
+  social:
+
+volumes:
+  dbdata:
+  redisdata:

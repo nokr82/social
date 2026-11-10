@@ -1,0 +1,23 @@
+# 환경 변수 (비밀값 포함)
+.env
+.env.*
+!.env.example
+
+# 압축/백업 파일
+*.zip
+
+# 의존성
+node_modules/
+vendor/
+
+# 로그
+*.log
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Docker 볼륨 데이터
+docker/**/data/
