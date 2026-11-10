@@ -1,0 +1,56 @@
+/*
+ * 소셜링 디자인 토큰 — 디자인 시안의 색·글꼴을 변수로 모음.
+ * 화면 컴포넌트는 이 변수만 쓰고, 색 코드를 직접 쓰지 않는다.
+ */
+:root {
+    --c-bg: #F7F5FF;          /* 앱 배경 */
+    --c-surface: #FFFFFF;     /* 카드·시트 */
+    --c-primary: #6C5CE7;     /* 주 버튼·강조 */
+    --c-primary-ink: #5B4BD6; /* 보라 글자 */
+    --c-primary-deep: #3F31B0;
+    --c-primary-soft: #F1EEFF;/* 연보라 배경 (칩·말풍선) */
+    --c-primary-line: #D9D1FF;
+    --c-ink: #1F1B3A;         /* 본문 글자 */
+    --c-ink-2: #4A4566;
+    --c-muted: #6B6785;
+    --c-placeholder: #8A85A3;
+    --c-line: #E4E0F5;
+    --c-divider: #ECE9F7;
+    --c-live: #22B573;        /* 접속중 점 */
+    --c-live-ink: #1E8A55;
+    --c-ok: #1E7A4C;
+    --c-danger: #C0392B;
+    --c-heart: #E8476A;
+
+    --f-title: 'Jua', sans-serif;
+    --f-body: 'Noto Sans KR', sans-serif;
+
+    --shadow-card: 0 3px 12px rgba(31, 27, 58, 0.07);
+    --shadow-soft: 0 2px 8px rgba(108, 92, 231, 0.10);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #E9E6F5; }
+body { font-family: var(--f-body); color: var(--c-ink); -webkit-font-smoothing: antialiased; }
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: default; }
+input, textarea { font-family: inherit; }
+input::placeholder, textarea::placeholder { color: var(--c-placeholder); }
+a { color: var(--c-primary-ink); }
+
+/* 스크롤바 숨김 (디자인의 .scroll) */
+.scroll { overflow-y: auto; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+
+/* 스크린리더 전용 텍스트 */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 공통 버튼: 디자인의 56px 주 버튼 */
+.btn-primary {
+    height: 56px; width: 100%; border: none; border-radius: 18px;
+    background: var(--c-primary); color: #fff; font-size: 16px; font-weight: 700;
+}
+.btn-primary:disabled { background: var(--c-line); color: var(--c-muted); }
+
+/* 제목 글꼴 */
+.title { font-family: var(--f-title); font-weight: 400; margin: 0; line-height: 1.3; }

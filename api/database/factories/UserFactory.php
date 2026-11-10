@@ -3,8 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\User;
+use App\Services\Auth\SignupService;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
@@ -12,34 +12,35 @@ use Illuminate\Support\Str;
  */
 class UserFactory extends Factory
 {
-    /**
-     * The current password being used by the factory.
-     */
-    protected static ?string $password;
-
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
-            'remember_token' => Str::random(10),
+            'nickname' => 'u'.Str::lower(Str::random(8)),
         ];
     }
 
     /**
-     * Indicate that the model's email address should be unverified.
+     * 가입을 마친 사용자처럼 부속 데이터(본인인증·프로필·아바타·매너점수)까지 생성.
+     * 사용: User::factory()->complete()->create()
      */
-    public function unverified(): static
+    public function complete(string $gender = 'F', string $birth = '1995-05-05'): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->afterCreating(function (User $user) use ($gender, $birth) {
+            $user->identity()->create([
+                'ci_hash' => SignupService::hashCi('ci-'.$user->id.'-'.Str::random(6)),
+                'gender' => $gender,
+                'birth_date' => $birth,
+                'provider' => 'fake',
+                'verified_at' => now(),
+            ]);
+            $user->profile()->create([]);
+            $user->trustScore()->create([]);
+            $user->avatar()->create(['parts' => SignupService::defaultAvatar()]);
+        });
+    }
+
+    public function suspended(): static
+    {
+        return $this->state(fn () => ['status' => User::STATUS_SUSPENDED]);
     }
 }
