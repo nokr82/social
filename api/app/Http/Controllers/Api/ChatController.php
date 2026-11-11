@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\ChatMessage;
+use App\Services\Chat\ChatAttachmentService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AvatarSummary;
 use App\Http\Resources\ChatMessageResource;
@@ -30,7 +32,8 @@ class ChatController extends Controller
             'room_id' => $r['room_id'],
             'user' => AvatarSummary::of($r['user']),
             'last_message' => [
-                'body' => $r['last_message']->body,
+                'body' => $r['last_message']->preview(),
+                'type' => $r['last_message']->type,
                 'mine' => $r['last_message']->sender_id === $request->user()->id,
                 'created_at' => $r['last_message']->created_at->toIso8601String(),
             ],
@@ -109,6 +112,44 @@ class ChatController extends Controller
 
         return (new ChatMessageResource($this->dm->send($request->user(), $room, $body)))->response()->setStatusCode(201);
     }
+
+    /** POST /api/chats/{room}/images  (multipart: image) — 친구에게 사진 */
+    public function sendImage(Request $request, ChatRoom $room, ChatAttachmentService $attachments): JsonResponse
+    {
+        $file = $request->validate(['image' => self::IMAGE_RULES])['image'];
+        $this->dm->assertMember($request->user(), $room); // 권한 확인 후에 저장
+        [$body, $meta] = $attachments->storeImage($room, $file);
+
+        return (new ChatMessageResource($this->dm->send($request->user(), $room, $body, ChatMessage::IMAGE, $meta)))
+            ->response()->setStatusCode(201);
+    }
+
+    /** POST /api/chats/{room}/meetups  {meetup_id} — 내가 참여 중인 번개를 카드로 공유 */
+    public function shareMeetup(Request $request, ChatRoom $room, ChatAttachmentService $attachments): JsonResponse
+    {
+        $id = (int) $request->validate(['meetup_id' => ['required', 'integer', 'min:1']])['meetup_id'];
+        $this->dm->assertMember($request->user(), $room);
+        [$body, $meta] = $attachments->meetupCard($request->user(), $id);
+
+        return (new ChatMessageResource($this->dm->send($request->user(), $room, $body, ChatMessage::MEETUP, $meta)))
+            ->response()->setStatusCode(201);
+    }
+
+    /**
+     * GET /api/chat-images/{message}/file?signature=... (로컬 저장소일 때만 사용)
+     * 서명이 곧 권한: 메시지를 볼 수 있는 사람에게만 서명 URL이 발급된다.
+     */
+    public function imageFile(ChatMessage $message): \Symfony\Component\HttpFoundation\Response
+    {
+        abort_unless($message->type === ChatMessage::IMAGE && isset($message->meta['path']), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk(config('social.photos.disk'))->response($message->meta['path'], null, [
+            'Cache-Control' => 'private, max-age=1800',
+        ]);
+    }
+
+    /** 업로드 규칙 (프로필 사진과 동일: 10MB, jpg·png·webp) */
+    public const IMAGE_RULES = ['required', 'file', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'];
 
     /** POST /api/chats/{room}/read  {last_id} */
     public function read(Request $request, ChatRoom $room): JsonResponse

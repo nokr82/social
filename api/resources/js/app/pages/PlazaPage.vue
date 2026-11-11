@@ -22,7 +22,7 @@ import { seededSpot } from '../lib/avatar';
 import { connectEcho } from '../lib/echo';
 import { meetupWhen } from '../lib/time';
 import { getLocation } from '../lib/location';
-import { comingSoon, showToast } from '../lib/toast';
+import { showToast } from '../lib/toast';
 
 const props = defineProps({ id: { type: String, required: true } });
 const router = useRouter();
@@ -31,6 +31,8 @@ const plaza = ref(null);
 const members = ref([]);              // presence 접속자 [{id, nickname, avatar}]
 const positions = reactive({});       // userId → {x, y} (0~1 비율)
 const bubbles = reactive({});         // userId → 말풍선 텍스트 (5초)
+const emotes = reactive({});          // userId → 표정 코드 (2.5초)
+const showEmotes = ref(false);        // 표정 고르는 줄
 const messages = ref([]);             // 오래된 → 최신
 const blocked = ref(new Set());       // 차단 관계 사용자 (양방향)
 const selected = ref(null);           // 미니 카드로 연 사용자
@@ -46,6 +48,23 @@ const chatEl = ref(null);
 let channel = null;
 let heartbeatTimer = null;
 const bubbleTimers = {};
+const emoteTimers = {};
+let lastEmoteAt = 0;
+
+/**
+ * 아바타 표정·동작: whisper로 같은 광장 접속자에게만 전달 (서버 저장 없음, 위치 이동과 같은 방식)
+ * 받은 쪽은 정해진 코드만 그리고(임의 문자열 표시 금지), 차단 관계면 무시한다.
+ */
+const EMOTES = [
+    { code: 'wave', e: '👋', label: '손 흔들기' },
+    { code: 'laugh', e: '😂', label: '웃기' },
+    { code: 'heart', e: '❤️', label: '하트' },
+    { code: 'clap', e: '👏', label: '박수' },
+    { code: 'wow', e: '😮', label: '놀람' },
+    { code: 'party', e: '🎉', label: '축하' },
+];
+const EMOTE_MAP = Object.fromEntries(EMOTES.map((x) => [x.code, x.e]));
+const EMOTE_COOLDOWN = 1200; // 연타 방지 (ms)
 
 const meId = computed(() => auth.me?.id);
 const AVATAR_W = 64;   // 아바타 버튼 폭 (위치 계산용)
@@ -56,7 +75,7 @@ const avatars = computed(() => members.value
     .filter((m) => !blocked.value.has(m.id))
     .map((m) => {
         const pos = positions[m.id] ?? spotFor(m.id); // placeNew 전 한 프레임 동안의 임시 자리
-        return { ...m, pos, me: m.id === meId.value, bubble: bubbles[m.id] };
+        return { ...m, pos, me: m.id === meId.value, bubble: bubbles[m.id], emote: EMOTE_MAP[emotes[m.id]] };
     }));
 
 function spotFor(userId) {
@@ -141,12 +160,16 @@ function joinChannel() {
         .listenForWhisper('move', (e) => {
             if (typeof e?.id === 'number' && !blocked.value.has(e.id)) positions[e.id] = clampPos(e);
         })
+        .listenForWhisper('emote', (e) => {
+            if (typeof e?.id === 'number' && EMOTE_MAP[e.code] && !blocked.value.has(e.id)) showEmote(e.id, e.code);
+        })
         .error(() => showToast('실시간 연결에 문제가 있어요. 잠시 후 다시 들어와 주세요'));
 }
 
 function leave() {
     clearInterval(heartbeatTimer);
     Object.values(bubbleTimers).forEach(clearTimeout);
+    Object.values(emoteTimers).forEach(clearTimeout);
     window.Echo?.leave(`plaza.${props.id}`);
     // 화면을 떠나는 중에도 요청이 끝나도록 keepalive
     api('POST', `/plazas/${props.id}/leave`, {}, { keepalive: true }).catch(() => {});
@@ -162,6 +185,25 @@ function clampPos({ x, y }) {
 function whisperMyPosition() {
     const pos = positions[meId.value];
     if (channel && pos) channel.whisper('move', { id: meId.value, ...pos });
+}
+
+/** 표정 보내기: 내 화면에 바로 보이고, 다른 사람에게는 whisper */
+function sendEmote(code) {
+    const now = Date.now();
+    if (now - lastEmoteAt < EMOTE_COOLDOWN) return;
+    lastEmoteAt = now;
+    showEmote(meId.value, code);
+    channel?.whisper('emote', { id: meId.value, code });
+}
+
+function showEmote(userId, code) {
+    // 같은 표정을 연달아 받아도 애니메이션이 다시 시작되도록 한 번 비웠다가 넣음
+    delete emotes[userId];
+    clearTimeout(emoteTimers[userId]);
+    requestAnimationFrame(() => {
+        emotes[userId] = code;
+        emoteTimers[userId] = setTimeout(() => delete emotes[userId], 2500);
+    });
 }
 
 /** 광장 바닥을 탭하면 내 아바타가 그 자리로 이동 */
@@ -319,8 +361,9 @@ onBeforeUnmount(leave);
                 :aria-label="a.me ? '내 아바타' : `${a.nickname} 아바타`"
                 @click.stop="pick(a)"
             >
+                <span v-if="a.emote" class="emote-pop" aria-hidden="true">{{ a.emote }}</span>
                 <span v-if="a.bubble" class="bubble">{{ a.bubble }}</span>
-                <span class="face" :class="{ me: a.me }"><AvatarFace :parts="a.avatar" :size="40" /></span>
+                <span class="face" :class="{ me: a.me, bounce: a.emote }"><AvatarFace :parts="a.avatar" :size="40" /></span>
                 <span class="tag">{{ a.me ? '나' : a.nickname }}</span>
             </button>
 
@@ -396,8 +439,12 @@ onBeforeUnmount(leave);
                 <div v-if="!messages.length" class="sys">첫 인사를 건네보세요 👋</div>
             </div>
 
+            <!-- 표정·동작 고르기 -->
+            <div v-if="showEmotes" class="emote-bar" role="toolbar" aria-label="표정·동작">
+                <button v-for="x in EMOTES" :key="x.code" type="button" :aria-label="x.label" @click="sendEmote(x.code)">{{ x.e }}</button>
+            </div>
             <form class="compose" @submit.prevent="send">
-                <button type="button" class="emote" aria-label="아바타 표정·동작" @click="comingSoon('표정·동작')">
+                <button type="button" class="emote" :class="{ active: showEmotes }" aria-label="아바타 표정·동작" :aria-expanded="showEmotes" @click="showEmotes = !showEmotes">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5q3.5 3 7 0" /><path d="M9 9.5h.01M15 9.5h.01" /></svg>
                 </button>
                 <label class="field">
@@ -460,6 +507,22 @@ onBeforeUnmount(leave);
 .bubble { background: #fff; border-radius: 10px; padding: 3px 8px; font-size: 11px; font-weight: 700; color: var(--c-ink); white-space: nowrap; box-shadow: 0 2px 6px rgba(31,27,58,.10); }
 .face { width: 46px; height: 46px; border-radius: 23px; display: flex; align-items: center; justify-content: center; border: 3px solid transparent; }
 .face.me { border-color: var(--c-primary); }
+/* 표정: 아바타 위로 떠올랐다 사라짐 + 아바타 통통 */
+.emote-pop { position: absolute; top: -30px; left: 50%; font-size: 26px; transform: translateX(-50%); animation: emote-up 2.5s ease-out forwards; pointer-events: none; }
+@keyframes emote-up {
+    0% { opacity: 0; transform: translate(-50%, 8px) scale(.4); }
+    15% { opacity: 1; transform: translate(-50%, 0) scale(1.2); }
+    25% { transform: translate(-50%, 0) scale(1); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -18px); }
+}
+.face.bounce { animation: bounce .5s ease-out 2; }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } }
+.emote-bar { display: flex; justify-content: space-around; padding: 8px 12px 0; }
+.emote-bar button { width: 46px; height: 46px; border: none; border-radius: 23px; background: var(--c-bg); font-size: 24px; display: flex; align-items: center; justify-content: center; }
+.emote-bar button:active { transform: scale(.9); }
+.emote.active { box-shadow: inset 0 0 0 2px var(--c-primary); } /* 표정 줄이 열려 있음 */
+@media (prefers-reduced-motion: reduce) { .emote-pop, .face.bounce { animation: none; } }
 .tag { background: rgba(31,27,58,.72); color: #fff; border-radius: 8px; padding: 1px 6px; font-size: 10px; font-weight: 700; white-space: nowrap; max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 .alone { position: absolute; left: 0; right: 0; bottom: 14px; margin: 0; text-align: center; font-size: 12px; color: var(--c-muted); pointer-events: none; }
 

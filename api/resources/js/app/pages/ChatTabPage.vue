@@ -14,6 +14,7 @@ import { ApiError, get } from '../lib/api';
 import { auth } from '../lib/auth';
 import { openDm } from '../lib/dm';
 import { connectEcho } from '../lib/echo';
+import { previewOf } from '../lib/chatAttach';
 import { ago, genderAge, presenceText } from '../lib/time';
 import { showToast } from '../lib/toast';
 
@@ -56,7 +57,7 @@ function onIncoming(msg) {
     const i = chats.value.findIndex((c) => c.room_id === msg.room_id);
     if (i === -1) return load(); // 처음 온 대화면 목록 새로 고침
     const [chat] = chats.value.splice(i, 1);
-    chat.last_message = { body: msg.body, mine: false, created_at: msg.created_at };
+    chat.last_message = { body: previewOf(msg), type: msg.type, mine: false, created_at: msg.created_at };
     chat.unread++;
     chats.value.unshift(chat);
 }

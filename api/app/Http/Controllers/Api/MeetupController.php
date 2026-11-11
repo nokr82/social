@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\Chat\ChatAttachmentService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AvatarSummary;
 use App\Http\Resources\ChatMessageResource;
@@ -92,7 +93,7 @@ class MeetupController extends Controller
             $msg = $last->get($m->chatRoom?->id);
 
             return $this->present($m, $me) + [
-                'last_message' => $msg ? ['body' => $msg->body, 'sender' => $msg->type === 'system' ? null : $msg->sender?->nickname, 'created_at' => $msg->created_at->toIso8601String()] : null,
+                'last_message' => $msg ? ['body' => $msg->preview(), 'type' => $msg->type, 'sender' => $msg->type === 'system' ? null : $msg->sender?->nickname, 'created_at' => $msg->created_at->toIso8601String()] : null,
                 'unread' => (int) ($unread[$m->chatRoom?->id] ?? 0),
             ];
         })]);
@@ -193,6 +194,17 @@ class MeetupController extends Controller
         abort_if($body === '', 422, '빈 메시지는 보낼 수 없어요');
 
         return (new ChatMessageResource($this->meetups->sendMessage($request->user(), $meetup, $body)))->response()->setStatusCode(201);
+    }
+
+    /** POST /api/meetups/{meetup}/images  (multipart: image) — 번개방에 사진 */
+    public function sendImage(Request $request, Meetup $meetup, ChatAttachmentService $attachments): JsonResponse
+    {
+        $file = $request->validate(['image' => ChatController::IMAGE_RULES])['image'];
+        $this->meetups->assertCanPost($request->user(), $meetup); // 권한 확인 후에 저장
+        [$body, $meta] = $attachments->storeImage($meetup->chatRoom()->firstOrFail(), $file);
+
+        return (new ChatMessageResource($this->meetups->sendMessage($request->user(), $meetup, $body, ChatMessage::IMAGE, $meta)))
+            ->response()->setStatusCode(201);
     }
 
     /** POST /api/meetups/{meetup}/read  {last_id} */

@@ -8,12 +8,15 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import AttachSheet from '../components/AttachSheet.vue';
 import AvatarFace from '../components/AvatarFace.vue';
+import MessageAttachment from '../components/MessageAttachment.vue';
 import { ApiError, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
 import { connectEcho } from '../lib/echo';
 import { ago, genderAge } from '../lib/time';
-import { comingSoon, showToast } from '../lib/toast';
+import { sendChatImage } from '../lib/chatAttach';
+import { showToast } from '../lib/toast';
 
 const props = defineProps({ roomId: { type: String, required: true } });
 const router = useRouter();
@@ -25,6 +28,8 @@ const draft = ref('');
 const sending = ref(false);
 const hasOlder = ref(true);
 const listEl = ref(null);
+const attaching = ref(false);   // '+' 시트
+const uploading = ref(false);
 const channel = `chat.${props.roomId}`;
 
 const meId = computed(() => auth.me?.id);
@@ -84,6 +89,31 @@ async function send() {
         showToast(e instanceof ApiError ? e.message : '메시지를 보내지 못했어요');
     } finally {
         sending.value = false;
+    }
+}
+
+/** 사진 보내기: 시트에서 고른 파일 → 줄여서 업로드 */
+async function sendImage(file) {
+    attaching.value = false;
+    uploading.value = true;
+    try {
+        messages.value.push(await sendChatImage(`/chats/${props.roomId}/images`, file));
+        scrollToBottom();
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : (e.message || '사진을 보내지 못했어요'));
+    } finally {
+        uploading.value = false;
+    }
+}
+
+/** 번개 공유: 내가 참여 중인 번개를 카드로 */
+async function shareMeetup(id) {
+    attaching.value = false;
+    try {
+        messages.value.push((await post(`/chats/${props.roomId}/meetups`, { meetup_id: id })).data);
+        scrollToBottom();
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : '공유하지 못했어요');
     }
 }
 
@@ -154,20 +184,23 @@ onBeforeUnmount(() => {
 
             <template v-for="m in messages" :key="m.id">
                 <div v-if="m.sender?.id === meId" class="mine">
-                    <span class="b">{{ m.body }}</span>
+                    <MessageAttachment v-if="m.type !== 'text'" :message="m" mine />
+                    <span v-else class="b">{{ m.body }}</span>
                     <span v-if="m.id === lastReadMineId" class="meta">읽음 · {{ ago(m.created_at) }}</span>
                     <span v-else-if="m.id === lastMineId" class="meta">{{ ago(m.created_at) }}</span>
                 </div>
                 <div v-else class="other">
                     <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" style="flex-shrink: 0" />
-                    <span class="b">{{ m.body }}</span>
+                    <MessageAttachment v-if="m.type !== 'text'" :message="m" />
+                    <span v-else class="b">{{ m.body }}</span>
                 </div>
             </template>
+            <div v-if="uploading" class="mine"><span class="b sending">사진 보내는 중…</span></div>
         </div>
 
         <!-- 입력 -->
         <form class="compose" @submit.prevent="send">
-            <button type="button" class="plus" aria-label="사진·번개 공유" @click="comingSoon('사진·번개 공유')">
+            <button type="button" class="plus" aria-label="사진·번개 공유" :disabled="uploading" @click="attaching = true">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             </button>
             <label class="field">
@@ -178,11 +211,14 @@ onBeforeUnmount(() => {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
             </button>
         </form>
+
+        <AttachSheet v-if="attaching" allow-meetup @close="attaching = false" @image="sendImage" @meetup="shareMeetup" />
     </div>
 </template>
 
 <style scoped>
 .dm { height: 100%; display: flex; flex-direction: column; }
+.sending { opacity: .6; }
 .head { display: flex; align-items: center; gap: 6px; padding: 14px 8px 8px; background: var(--c-surface); }
 .icon { width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 0; text-align: left; }

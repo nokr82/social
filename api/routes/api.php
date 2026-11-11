@@ -31,6 +31,8 @@ Route::get('meta/categories', [MetaController::class, 'categories']);
 // 사진 파일 (로컬 저장소용): 토큰 대신 서명으로 접근 → <img src>로 바로 사용
 Route::get('photos/{photo}/file', [PhotoController::class, 'file'])
     ->middleware('signed:relative')->name('photos.file');
+Route::get('chat-images/{message}/file', [ChatController::class, 'imageFile'])
+    ->middleware('signed:relative')->name('chat-images.file');
 Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
 Route::get('meta/push', [MetaController::class, 'push']);
 
@@ -79,6 +81,8 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::get('chats/{room}/messages', [ChatController::class, 'messages']);
         Route::post('chats/{room}/messages', [ChatController::class, 'send'])->middleware('throttle:chat');
         Route::post('chats/{room}/read', [ChatController::class, 'read']);
+        Route::post('chats/{room}/images', [ChatController::class, 'sendImage'])->middleware('throttle:20,1');
+        Route::post('chats/{room}/meetups', [ChatController::class, 'shareMeetup'])->middleware('throttle:chat');
 
         // 번개
         Route::get('meetups', [MeetupController::class, 'index']);
@@ -95,6 +99,7 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::get('meetups/{meetup}/messages', [MeetupController::class, 'messages']);
         Route::post('meetups/{meetup}/messages', [MeetupController::class, 'send'])->middleware('throttle:chat');
         Route::post('meetups/{meetup}/read', [MeetupController::class, 'read']);
+        Route::post('meetups/{meetup}/images', [MeetupController::class, 'sendImage'])->middleware('throttle:20,1');
 
         Route::get('blocks', [SafetyController::class, 'blocks']);
         Route::get('blocks/mine', [SafetyController::class, 'mine']);

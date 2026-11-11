@@ -108,6 +108,18 @@
 
 - 정지 계정은 모든 API가 403 `{code: ACCOUNT_SUSPENDED, message, until}` (until 지나면 다음 요청에서 자동 해제)
 
+## 채팅 첨부
+
+| 메서드 | 경로 | 입력 / 비고 |
+|---|---|---|
+| POST | /api/chats/{room}/images · /api/meetups/{id}/images | multipart `image` (jpg·png·webp, 10MB) → EXIF 제거·긴 변 1280px |
+| POST | /api/chats/{room}/meetups | {meetup_id} 내가 참여 중인 시작 전 번개만 |
+| GET | /api/chat-images/{message}/file | 서명 URL(30분) 전용 |
+
+- 메시지 type: text · system · image(`image{url,width,height}`) · meetup(`meetup{...최신 상태}` 또는 null)
+- 목록 last_message에 type 추가, body는 요약('사진을 보냈어요' 등)
+- 광장 표정: presence whisper `emote {id, code}` (wave·laugh·heart·clap·wow·party), 서버 저장 없음
+
 ## 알림
 
 | 메서드 | 경로 | 입력 / 비고 |

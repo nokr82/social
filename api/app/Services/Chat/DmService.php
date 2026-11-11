@@ -47,11 +47,15 @@ class DmService
         }
     }
 
-    public function send(User $me, ChatRoom $room, string $body): ChatMessage
+    /**
+     * 메시지 보내기 (글·사진·번개 카드 공통).
+     * 사진은 컨트롤러가 assertMember를 먼저 통과한 뒤 저장해서 넘긴다 (권한 없는 사람의 파일이 디스크에 남지 않게).
+     */
+    public function send(User $me, ChatRoom $room, string $body, string $type = ChatMessage::TEXT, ?array $meta = null): ChatMessage
     {
         $other = $this->assertMember($me, $room);
 
-        $message = $room->messages()->create(['sender_id' => $me->id, 'body' => $body]);
+        $message = $room->messages()->create(['sender_id' => $me->id, 'type' => $type, 'body' => $body, 'meta' => $meta]);
         // 내가 보낸 메시지까지는 읽은 것
         $this->markRead($me, $room, $message->id, broadcast: false);
 
@@ -59,7 +63,7 @@ class DmService
         broadcast(new DmMessageSent($room->id, $other, $message))->toOthers();
         // 상대 폰 푸시 (설정·구독이 있을 때만 실제로 나감)
         if ($to = User::find($other)) {
-            Notify::dm($me, $to, $room->id, $body);
+            Notify::dm($me, $to, $room->id, $message->preview());
         }
 
         return $message;

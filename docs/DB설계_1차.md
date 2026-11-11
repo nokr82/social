@@ -67,6 +67,7 @@ Nov 10, 2026 · 설계서 v0.1 + 메인 디자인(광장 목록) 기준
 | notification_settings | user_id(PK), friend, chat, meetup, night_quiet | 행 없으면 기본값(전부 켬) |
 | push_subscriptions | subscribable, endpoint, public_key, auth_token | webpush 패키지 제공, 기기별 1행 |
 | (추가 컬럼) | meetups.reminded_at | 1시간 전 알림 1회 |
+| (추가 컬럼) | chat_messages.meta(json) | 사진 {path,w,h} · 번개 카드 {meetup_id} |
 
 - 사진 파일: `PHOTO_DISK`(개발 local → 운영 r2/s3). 공개 URL 없음, 30분 서명 URL만 발급
 - 업로드 시 EXIF(GPS) 제거: 위치 비공개 원칙 유지

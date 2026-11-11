@@ -16,7 +16,7 @@ use Illuminate\Http\UploadedFile;
  */
 class ImageProcessor
 {
-    private const MAX_SIDE = 1280;
+    public const MAX_SIDE = 1280; // 테스트·다른 서비스가 숫자를 따로 적지 않고 이 값을 참조
     private const QUALITY = 85;
 
     /** @return string JPEG 바이너리 (메타데이터 없음) */

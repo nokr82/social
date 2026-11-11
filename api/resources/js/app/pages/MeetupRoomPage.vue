@@ -8,12 +8,15 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import AttachSheet from '../components/AttachSheet.vue';
 import AvatarFace from '../components/AvatarFace.vue';
+import MessageAttachment from '../components/MessageAttachment.vue';
 import { ApiError, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
 import { connectEcho } from '../lib/echo';
 import { ago, meetupWhen, until } from '../lib/time';
-import { comingSoon, showToast } from '../lib/toast';
+import { sendChatImage } from '../lib/chatAttach';
+import { showToast } from '../lib/toast';
 
 const props = defineProps({ id: { type: String, required: true } });
 const router = useRouter();
@@ -84,6 +87,22 @@ async function send() {
         showToast(e instanceof ApiError ? e.message : '메시지를 보내지 못했어요');
     } finally {
         sending.value = false;
+    }
+}
+
+/* 사진 보내기 ('+' → 시트 → 파일) */
+const attaching = ref(false);
+const uploading = ref(false);
+async function sendImage(file) {
+    attaching.value = false;
+    uploading.value = true;
+    try {
+        messages.value.push(await sendChatImage(`/meetups/${props.id}/images`, file));
+        scrollToBottom();
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : (e.message || '사진을 보내지 못했어요'));
+    } finally {
+        uploading.value = false;
     }
 }
 
@@ -172,23 +191,26 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
                     {{ m.body }}
                 </div>
                 <div v-else-if="m.sender?.id === meId" class="mine">
-                    <span class="b">{{ m.body }}</span>
+                    <MessageAttachment v-if="m.type !== 'text'" :message="m" mine />
+                    <span v-else class="b">{{ m.body }}</span>
                     <span class="time">{{ ago(m.created_at) }}</span>
                 </div>
                 <div v-else class="other">
                     <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" style="flex-shrink: 0" />
                     <div class="col2">
                         <span class="who">{{ m.sender?.nickname }} <i v-if="m.sender?.id === hostId">호스트</i></span>
-                        <span class="b">{{ m.body }}</span>
+                        <MessageAttachment v-if="m.type !== 'text'" :message="m" />
+                        <span v-else class="b">{{ m.body }}</span>
                     </div>
                 </div>
             </template>
+            <div v-if="uploading" class="mine"><span class="b" style="opacity: .6">사진 보내는 중…</span></div>
             <div v-if="room && !room.room_open" class="sys">{{ room.status === 'canceled' ? '취소된 번개예요' : '채팅방이 닫혔어요' }}</div>
         </div>
 
         <!-- 입력 -->
         <form class="compose" @submit.prevent="send">
-            <button type="button" class="plus" aria-label="사진 보내기" @click="comingSoon('사진 보내기')">
+            <button type="button" class="plus" aria-label="사진 보내기" :disabled="uploading || room?.room_open === false" @click="attaching = true">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             </button>
             <label class="field">
@@ -199,6 +221,8 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
             </button>
         </form>
+
+        <AttachSheet v-if="attaching" @close="attaching = false" @image="sendImage" />
 
         <!-- 노쇼 상호 확인 -->
         <div v-if="showNoshow" class="dim" @click.self="showNoshow = false">

@@ -214,18 +214,24 @@ class MeetupService
         return ['votes' => $votes, 'needed' => $needed, 'confirmed' => $confirmed];
     }
 
-    public function sendMessage(User $user, Meetup $meetup, string $body): ChatMessage
+    /** 번개방에 글을 쓸 수 있는지 (참여 중 + 방이 열려 있음). 사진 저장 전에 먼저 호출 */
+    public function assertCanPost(User $user, Meetup $meetup): void
     {
         $this->assertMember($user, $meetup);
         if (! $meetup->isRoomOpen()) {
             throw new DomainException('ROOM_CLOSED', '닫힌 채팅방이에요', 410);
         }
+    }
+
+    public function sendMessage(User $user, Meetup $meetup, string $body, string $type = ChatMessage::TEXT, ?array $meta = null): ChatMessage
+    {
+        $this->assertCanPost($user, $meetup);
         $room = $meetup->chatRoom()->firstOrFail();
-        $message = $room->messages()->create(['sender_id' => $user->id, 'body' => $body]);
+        $message = $room->messages()->create(['sender_id' => $user->id, 'type' => $type, 'body' => $body, 'meta' => $meta]);
         $this->markRead($user, $meetup, $message->id);
 
         broadcast(new MeetupMessageSent($meetup->id, $message->load('sender.avatar')))->toOthers();
-        Notify::meetupMessage($meetup, $user, $this->joinedUsers($meetup, except: $user->id), $body);
+        Notify::meetupMessage($meetup, $user, $this->joinedUsers($meetup, except: $user->id), $message->preview());
 
         return $message;
     }
