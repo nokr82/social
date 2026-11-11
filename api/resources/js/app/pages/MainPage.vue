@@ -14,6 +14,7 @@ import { ApiError, get } from '../lib/api';
 import { auth } from '../lib/auth';
 import { CATEGORY_GROUND } from '../lib/avatar';
 import { getLocation } from '../lib/location';
+import { notify } from '../lib/notify';
 import { showToast } from '../lib/toast';
 
 const router = useRouter();
@@ -91,9 +92,15 @@ onBeforeUnmount(() => clearInterval(timer));
                 {{ location.label }}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
             </button>
-            <button class="me" aria-label="내 아바타 (MY)" @click="router.push({ name: 'my' })">
-                <AvatarFace :parts="auth.me?.avatar" :size="36" />
-            </button>
+            <div class="right">
+                <button class="bell" :aria-label="notify.unread ? `알림 ${notify.unread}개 안 읽음` : '알림'" @click="router.push({ name: 'notifications' })">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 01-3.4 0" /></svg>
+                    <span v-if="notify.unread" class="badge">{{ notify.unread > 99 ? '99+' : notify.unread }}</span>
+                </button>
+                <button class="me" aria-label="내 아바타 (MY)" @click="router.push({ name: 'my' })">
+                    <AvatarFace :parts="auth.me?.avatar" :size="36" />
+                </button>
+            </div>
         </div>
 
         <div class="body scroll">
@@ -147,6 +154,9 @@ onBeforeUnmount(() => clearInterval(timer));
 .main { height: 100%; display: flex; flex-direction: column; position: relative; }
 .top { display: flex; justify-content: space-between; align-items: center; padding: 20px 20px 4px; }
 .loc { display: flex; align-items: center; gap: 4px; background: none; border: none; padding: 10px 4px; font-size: 16px; font-weight: 700; color: var(--c-ink); }
+.right { display: flex; align-items: center; gap: 6px; }
+.bell { position: relative; width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; padding: 0; }
+.bell .badge { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #F0506E; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; border: 2px solid var(--c-bg); box-sizing: content-box; }
 .me { width: 44px; height: 44px; border-radius: 22px; border: 2px solid #fff; background: #E6E1FF; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 8px rgba(31,27,58,.12); }
 
 .body { flex: 1; min-height: 0; padding: 0 20px 120px; display: flex; flex-direction: column; gap: 16px; }

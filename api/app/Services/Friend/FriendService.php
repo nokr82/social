@@ -2,6 +2,7 @@
 
 namespace App\Services\Friend;
 
+use App\Notifications\Notify;
 use App\Exceptions\DomainException;
 use App\Models\FriendRequest;
 use App\Models\Friendship;
@@ -67,13 +68,16 @@ class FriendService
             throw new DomainException('DAILY_LIMIT', '오늘은 친구 요청을 더 보낼 수 없어요', 429);
         }
 
-        return FriendRequest::create([
+        $req = FriendRequest::create([
             'from_id' => $from->id,
             'to_id' => $toId,
             'message' => $message,
             'plaza_id' => $plazaId,
             'expires_at' => now()->addDays(FriendRequest::TTL_DAYS),
         ]);
+        Notify::friendRequested($from, User::findOrFail($toId), $message);
+
+        return $req;
     }
 
     public function accept(User $me, FriendRequest $req): void
@@ -88,6 +92,10 @@ class FriendService
                 ['user_id' => $req->to_id, 'friend_id' => $req->from_id, 'plaza_id' => $req->plaza_id, 'created_at' => now()],
             ]);
         });
+        // 요청 보낸 사람에게 '친구가 됐어요'
+        if ($from = User::find($req->from_id)) {
+            Notify::friendAccepted($me, $from);
+        }
     }
 
     public function reject(User $me, FriendRequest $req): void

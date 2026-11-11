@@ -28,6 +28,12 @@ return [
         'disk' => env('PHOTO_DISK', 'local'),
     ],
 
+    // 번개
+    'meetup' => [
+        'max_open_per_host' => 3,        // 동시에 열 수 있는 번개 수
+        'search_radius_m' => 5000,       // 번개 탭 '내 주변'
+    ],
+
     // 아바타 파츠 (앱 디자인의 선택지와 1:1)
     'avatar' => [
         'colors' => ['apricot', 'mint', 'sky', 'pink', 'yellow', 'lavender'],
@@ -57,6 +63,10 @@ return [
     'trust' => [
         'min_score_to_host' => 300,      // 이보다 낮으면 광장 개설 불가
         'auto_suspend_reports' => 5,     // 서로 다른 신고자 수가 이 이상이면 자동 임시정지
+        'report_penalty' => 50,          // 신고 승인 시 매너점수 감점
+        'attend_bonus' => 5,             // 번개 정상 참석 시 가점 (최대 1000)
+        'noshow_penalty' => 30,          // 노쇼 확정 시 매너점수 감점 (0~1000 중)
+        'noshow_votes' => 2,             // 노쇼 확정에 필요한 '안 왔어요' 표 (참여자가 적으면 그보다 적게)
     ],
 
     'signup' => [

@@ -20,6 +20,7 @@ import { ApiError, api, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
 import { seededSpot } from '../lib/avatar';
 import { connectEcho } from '../lib/echo';
+import { meetupWhen } from '../lib/time';
 import { getLocation } from '../lib/location';
 import { comingSoon, showToast } from '../lib/toast';
 
@@ -35,6 +36,7 @@ const blocked = ref(new Set());       // 차단 관계 사용자 (양방향)
 const selected = ref(null);           // 미니 카드로 연 사용자
 const card = ref(null);               // 미니 카드용 프로필 (GET /users/{id})
 const requesting = ref(false);
+const meetup = ref(null);             // 이 광장의 가장 가까운 번개 (배너)
 const showMembers = ref(false);
 const draft = ref('');
 const sending = ref(false);
@@ -90,7 +92,10 @@ async function enter() {
         ]);
         plaza.value = p.data;
 
-        const [msgs, blocks] = await Promise.all([get(`/plazas/${props.id}/messages`), get('/blocks')]);
+        const [msgs, blocks, meetups] = await Promise.all([
+            get(`/plazas/${props.id}/messages`), get('/blocks'), get(`/plazas/${props.id}/meetups`),
+        ]);
+        meetup.value = meetups.data[0] ?? null;
         messages.value = msgs.data.reverse();
         hasOlder.value = msgs.data.length >= 50;
         blocked.value = new Set(blocks.user_ids);
@@ -291,7 +296,7 @@ onBeforeUnmount(leave);
                     <template v-if="plaza"> · {{ plaza.category_label }}</template>
                 </span>
             </div>
-            <button class="icon round primary" aria-label="이 광장에 번개 만들기" @click="comingSoon('번개')">
+            <button class="icon round primary" aria-label="이 광장에 번개 만들기" @click="router.push({ name: 'meetup-create', params: { plazaId: id } })">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></svg>
             </button>
             <button class="icon round" aria-label="참여자 목록" @click="showMembers = true">
@@ -362,6 +367,17 @@ onBeforeUnmount(leave);
 
         <!-- 채팅 -->
         <div class="chat">
+            <!-- 이 광장의 번개 (오프라인 단계로 연결) -->
+            <button v-if="meetup" class="bungae" @click="router.push({ name: 'meetup', params: { id: meetup.id } })">
+                <span class="bz">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></svg>
+                </span>
+                <span class="bcol">
+                    <b>번개 · {{ meetupWhen(meetup.starts_at) }} {{ meetup.area_label }}</b>
+                    <small>{{ meetup.joined_count }}/{{ meetup.capacity }}명 참여 · 본인인증 회원만 참여 가능</small>
+                </span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
             <div ref="chatEl" class="msgs scroll" aria-live="polite" @scroll.passive="onChatScroll">
                 <template v-for="m in messages" :key="m.id">
                     <div v-if="m.type === 'system'" class="sys">{{ m.body }}</div>
@@ -464,6 +480,11 @@ onBeforeUnmount(leave);
 .solid { border: none; background: var(--c-primary); color: #fff; }
 .line { border: 1.5px solid var(--c-primary-line); background: var(--c-surface); color: var(--c-primary-ink); }
 
+.bungae { margin: 12px 16px 4px; border: none; background: var(--c-primary-soft); border-radius: 16px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; text-align: left; }
+.bz { width: 32px; height: 32px; border-radius: 10px; background: var(--c-primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.bcol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bcol b { font-size: 13px; color: var(--c-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bcol small { font-size: 11px; color: var(--c-muted); }
 .chat { flex: 1; min-height: 0; margin-top: 10px; background: var(--c-surface); border-radius: 28px 28px 0 0; box-shadow: 0 -4px 16px rgba(108,92,231,.06); display: flex; flex-direction: column; }
 .msgs { flex: 1; min-height: 0; padding: 14px 16px 8px; display: flex; flex-direction: column; gap: 10px; }
 .sys { align-self: center; font-size: 11px; color: var(--c-muted); background: var(--c-bg); padding: 4px 10px; border-radius: 10px; }

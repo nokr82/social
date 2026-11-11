@@ -5,6 +5,7 @@
  * - 401이면 토큰을 지우고 온보딩으로 (토큰 만료·로그아웃)
  */
 import { auth } from './auth';
+import { showToast } from './toast';
 
 export class ApiError extends Error {
     constructor(status, code, message, errors = null) {
@@ -35,6 +36,8 @@ export async function api(method, path, body = null, { keepalive = false } = {})
 
     if (!res.ok) {
         if (res.status === 401) auth.clear();
+        // 이용 제한 계정(ACCOUNT_SUSPENDED 등): 화면마다 처리하지 않아도 사유가 보이게
+        if (res.status === 403 && data?.code?.startsWith('ACCOUNT_')) showToast(data.message, 4000);
         // 422 검증 에러는 첫 메시지를 대표로
         const firstError = data?.errors ? Object.values(data.errors)[0]?.[0] : null;
         throw new ApiError(res.status, data?.code ?? `HTTP_${res.status}`, firstError ?? data?.message ?? '잠시 후 다시 시도해 주세요', data?.errors);

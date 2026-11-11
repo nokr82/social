@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Block;
 use App\Models\Report;
 use App\Models\User;
+use App\Http\Resources\AvatarSummary;
+use App\Services\Moderation\ModerationService;
 use App\Services\Safety\BlockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +20,10 @@ use Illuminate\Validation\Rule;
  */
 class SafetyController extends Controller
 {
-    public function __construct(private readonly BlockService $blocker) {}
+    public function __construct(
+        private readonly BlockService $blocker,
+        private readonly ModerationService $moderation,
+    ) {}
 
     /** POST /api/blocks  {user_id} */
     public function block(Request $request): JsonResponse
@@ -47,6 +52,22 @@ class SafetyController extends Controller
     public function blocks(Request $request): JsonResponse
     {
         return response()->json(['user_ids' => $request->user()->blockedUserIds()]);
+    }
+
+    /**
+     * GET /api/blocks/mine — MY > 차단 목록. 내가 차단한 사람만 (나를 차단한 사람은 절대 노출 안 함)
+     * 해제는 기존 DELETE /api/blocks/{userId}
+     */
+    public function mine(Request $request): JsonResponse
+    {
+        $rows = Block::where('blocker_id', $request->user()->id)->latest('created_at')->get();
+        $users = User::withTrashed()->with('avatar')->whereIn('id', $rows->pluck('blocked_id'))->get()->keyBy('id');
+
+        return response()->json(['data' => $rows->map(fn ($b) => [
+            'user' => AvatarSummary::of($users[$b->blocked_id] ?? null)
+                ?? ['id' => $b->blocked_id, 'nickname' => '알 수 없음', 'avatar' => null, 'avatar_version' => null],
+            'blocked_at' => $b->created_at?->toIso8601String(),
+        ])->values()]);
     }
 
     /**
@@ -81,15 +102,8 @@ class SafetyController extends Controller
                 ['reason' => $data['reason'], 'detail' => $data['detail'] ?? null],
             );
 
-            $distinctReporters = Report::where('target_id', $data['user_id'])
-                ->where('status', '!=', Report::STATUS_REJECTED)
-                ->distinct()->count('reporter_id');
-
-            if ($distinctReporters >= config('social.trust.auto_suspend_reports')) {
-                User::whereKey($data['user_id'])
-                    ->where('status', User::STATUS_ACTIVE)
-                    ->update(['status' => User::STATUS_SUSPENDED]);
-            }
+            // 서로 다른 신고자 수가 기준 이상이면 자동 정지 (이력 기록 + 토큰 폐기, 관리자 검토 대기)
+            $this->moderation->autoSuspendIfNeeded(User::findOrFail($data['user_id']));
         });
 
         // '차단도 함께'가 켜져 있으면(기본값) 차단까지

@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\MeController;
+use App\Http\Controllers\Api\MeetupController;
 use App\Http\Controllers\Api\MetaController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PlazaController;
 use App\Http\Controllers\Api\PlazaMessageController;
 use App\Http\Controllers\Api\FriendRequestController;
@@ -30,6 +32,7 @@ Route::get('meta/categories', [MetaController::class, 'categories']);
 Route::get('photos/{photo}/file', [PhotoController::class, 'file'])
     ->middleware('signed:relative')->name('photos.file');
 Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
+Route::get('meta/push', [MetaController::class, 'push']);
 
 Route::middleware(['auth:sanctum', 'seen'])->group(function () {
     // 정지된 계정도 내 정보 조회·로그아웃은 가능
@@ -77,7 +80,33 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::post('chats/{room}/messages', [ChatController::class, 'send'])->middleware('throttle:chat');
         Route::post('chats/{room}/read', [ChatController::class, 'read']);
 
+        // 번개
+        Route::get('meetups', [MeetupController::class, 'index']);
+        Route::get('meetups/mine', [MeetupController::class, 'mine']);
+        Route::get('plazas/{plaza}/meetups', [MeetupController::class, 'forPlaza']);
+        Route::post('plazas/{plaza}/meetups', [MeetupController::class, 'store']);
+        Route::get('meetups/{meetup}', [MeetupController::class, 'show']);
+        Route::delete('meetups/{meetup}', [MeetupController::class, 'destroy']);
+        Route::post('meetups/{meetup}/join', [MeetupController::class, 'join']);
+        Route::post('meetups/{meetup}/cancel', [MeetupController::class, 'cancel']);
+        Route::post('meetups/{meetup}/arrive', [MeetupController::class, 'arrive']);
+        Route::post('meetups/{meetup}/noshow', [MeetupController::class, 'noshow']);
+        Route::get('meetups/{meetup}/room', [MeetupController::class, 'room']);
+        Route::get('meetups/{meetup}/messages', [MeetupController::class, 'messages']);
+        Route::post('meetups/{meetup}/messages', [MeetupController::class, 'send'])->middleware('throttle:chat');
+        Route::post('meetups/{meetup}/read', [MeetupController::class, 'read']);
+
         Route::get('blocks', [SafetyController::class, 'blocks']);
+        Route::get('blocks/mine', [SafetyController::class, 'mine']);
+
+        // 알림센터 · 알림 설정 · 푸시 구독
+        Route::get('notifications', [NotificationController::class, 'index']);
+        Route::post('notifications/read-all', [NotificationController::class, 'readAll']);
+        Route::post('notifications/{id}/read', [NotificationController::class, 'read'])->whereUuid('id');
+        Route::get('me/notification-settings', [NotificationController::class, 'settings']);
+        Route::put('me/notification-settings', [NotificationController::class, 'updateSettings']);
+        Route::post('push/subscriptions', [NotificationController::class, 'subscribe']);
+        Route::delete('push/subscriptions', [NotificationController::class, 'unsubscribe']);
         Route::post('blocks', [SafetyController::class, 'block']);
         Route::delete('blocks/{userId}', [SafetyController::class, 'unblock'])->whereNumber('userId');
         Route::post('reports', [SafetyController::class, 'report']);

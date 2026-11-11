@@ -40,6 +40,14 @@ services:
       mariadb: { condition: service_healthy }
       redis: { condition: service_started }
 
+  # 예약 작업 (매시간 번개 출석 정산 등). routes/console.php의 Schedule 정의를 실행
+  scheduler:
+    <<: *php
+    command: php artisan schedule:work
+    depends_on:
+      mariadb: { condition: service_healthy }
+      redis: { condition: service_started }
+
   mariadb:
     image: mariadb:11.8                  # 호스트와 같은 LTS
     environment:

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\MeResource;
+use App\Services\Moderation\ModerationService;
 use App\Support\Geo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,9 @@ class MeController extends Controller
 {
     public function show(Request $request): MeResource
     {
+        // 정지 계정도 들어오는 경로 → 기간이 끝났으면 여기서 풀어 줘야 '정지'로 잘못 보이지 않음
+        app(ModerationService::class)->releaseIfExpired($request->user());
+
         return new MeResource($request->user()->load('identity', 'profile', 'avatar'));
     }
 

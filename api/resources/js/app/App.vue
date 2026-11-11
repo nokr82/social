@@ -1,6 +1,28 @@
 <script setup>
-/** 폰 화면 프레임 + 라우터 + 토스트. 데스크톱에서는 가운데 390px 폭으로 보여준다 */
+/**
+ * 폰 화면 프레임 + 라우터 + 토스트. 데스크톱에서는 가운데 390px 폭으로 보여준다
+ * 로그인 상태가 되면 알림(종 숫자·실시간)을 시작하고, 푸시 알림을 누르면 해당 화면으로 이동
+ */
+import { onBeforeUnmount, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { auth } from './lib/auth';
+import { startNotifications, stopNotifications } from './lib/notify';
+import { registerServiceWorker } from './lib/push';
 import { toast } from './lib/toast';
+
+const router = useRouter();
+
+watch(() => auth.me?.id, (id) => (id ? startNotifications(auth.me) : stopNotifications()), { immediate: true });
+
+// 서비스 워커가 '알림 눌림 → 이 화면으로' 요청을 보냄
+function onSwMessage(e) {
+    if (e.data?.type === 'navigate' && e.data.url) router.push(e.data.url);
+}
+onMounted(() => {
+    registerServiceWorker();
+    navigator.serviceWorker?.addEventListener('message', onSwMessage);
+});
+onBeforeUnmount(() => navigator.serviceWorker?.removeEventListener('message', onSwMessage));
 </script>
 
 <template>

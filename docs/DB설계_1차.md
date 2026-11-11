@@ -55,5 +55,18 @@ Nov 10, 2026 · 설계서 v0.1 + 메인 디자인(광장 목록) 기준
 
 | chat_room_members | room_id, user_id (PK 복합), last_read_id | DM 참여자·읽음 위치. DM 방은 chat_rooms.ref_id = (작은ID<<32)\|큰ID |
 
+| meetups | plaza_id, host_id, area_label(공개), place_detail(참여자만), starts_at, capacity, age_rule·age_min·age_max, status | 48시간 이내, 2~10명 |
+| meetup_members | meetup_id, user_id (PK), status(joined/canceled/late_canceled), arrived_at, noshow_at | |
+| noshow_votes | meetup_id, voter_id, target_id (PK) | 상호 확인, 확정 시 trust_scores 감점 1회 |
+
+| admins | name, email(UNIQUE), password | 관리자 (앱 users와 분리) |
+| user_sanctions | user_id, admin_id(NULL=시스템), type(suspend/unsuspend/ban), until, reason | 제재 이력 (현재 상태는 users.status) |
+| (추가 컬럼) | reports.handled_by·action·admin_note, users.suspended_until, meetups.settled_at | 신고 처리 기록 · 기간 정지 · 출석 정산 완료 |
+
+| notifications | id(uuid), notifiable, data(json), read_at | Laravel 기본 알림 (알림센터) |
+| notification_settings | user_id(PK), friend, chat, meetup, night_quiet | 행 없으면 기본값(전부 켬) |
+| push_subscriptions | subscribable, endpoint, public_key, auth_token | webpush 패키지 제공, 기기별 1행 |
+| (추가 컬럼) | meetups.reminded_at | 1시간 전 알림 1회 |
+
 - 사진 파일: `PHOTO_DISK`(개발 local → 운영 r2/s3). 공개 URL 없음, 30분 서명 URL만 발급
 - 업로드 시 EXIF(GPS) 제거: 위치 비공개 원칙 유지

@@ -7,11 +7,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use NotificationChannels\WebPush\HasPushSubscriptions;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, SoftDeletes;
+    // Notifiable: 알림센터·실시간 알림, HasPushSubscriptions: 폰 푸시 구독(기기별)
+    use HasApiTokens, HasFactory, HasPushSubscriptions, Notifiable, SoftDeletes;
 
     public const STATUS_ACTIVE = 'active';
     public const STATUS_SUSPENDED = 'suspended';
@@ -26,7 +29,7 @@ class User extends Authenticatable
 
     protected function casts(): array
     {
-        return ['last_seen_at' => 'datetime'];
+        return ['last_seen_at' => 'datetime', 'suspended_until' => 'datetime'];
     }
 
     public function isActive(): bool
@@ -57,6 +60,29 @@ class User extends Authenticatable
     public function trustScore(): HasOne
     {
         return $this->hasOne(TrustScore::class);
+    }
+
+    public function notificationSetting(): HasOne
+    {
+        return $this->hasOne(NotificationSetting::class);
+    }
+
+    /** 설정 행이 없으면 기본값(전부 켬) — 가입 때 행을 만들지 않아도 됨 */
+    public function notificationSettingOrDefault(): NotificationSetting
+    {
+        return $this->notificationSetting ?? new NotificationSetting(['user_id' => $this->id]);
+    }
+
+    /** 실시간 알림 채널을 기존 개인 채널(App.Models.User.{id})과 같게 */
+    public function receivesBroadcastNotificationsOn(): string
+    {
+        return 'App.Models.User.'.$this->id;
+    }
+
+    /** 내가 받은 신고 (관리자 화면 집계용) */
+    public function reportsReceived(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Report::class, 'target_id');
     }
 
     /** 사진 (sort_order 0 = 대표사진) */

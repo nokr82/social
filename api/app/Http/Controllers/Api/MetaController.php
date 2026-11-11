@@ -26,4 +26,10 @@ class MetaController extends Controller
 
         return response()->json(['data' => $data]);
     }
+
+    /** GET /api/meta/push — 브라우저 푸시 구독에 필요한 공개키 (비공개키는 서버에만) */
+    public function push(): JsonResponse
+    {
+        return response()->json(['public_key' => config('webpush.vapid.public_key')]);
+    }
 }

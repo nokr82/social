@@ -2,6 +2,8 @@
 
 use App\Http\Resources\AvatarSummary;
 use App\Models\ChatRoom;
+use App\Models\Meetup;
+use App\Models\MeetupMember;
 use App\Models\Plaza;
 use App\Models\User;
 use App\Services\Plaza\PlazaPresence;
@@ -21,6 +23,14 @@ Broadcast::channel('chat.{room}', function (User $user, ChatRoom $room) {
     $other = $room->otherMemberId($user->id);
 
     return $user->isActive() && $user->isFriendWith($other) && ! $user->isBlockedWith($other);
+});
+
+/*
+| 번개 채팅방 채널: meetup.{id} — 참여 확정자만
+*/
+Broadcast::channel('meetup.{meetup}', function (User $user, Meetup $meetup) {
+    return $user->isActive() && MeetupMember::where('meetup_id', $meetup->id)
+        ->where('user_id', $user->id)->where('status', MeetupMember::JOINED)->exists();
 });
 
 /*

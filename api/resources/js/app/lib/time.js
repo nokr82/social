@@ -18,3 +18,32 @@ export function presenceText(f) {
 
 /** 성별·나이 배지 (디자인: '남 · 31') */
 export const genderAge = (u) => (u?.gender ? `${u.gender === 'F' ? '여' : '남'} · ${u.age}` : '');
+
+/** 번개 시간: '오늘 저녁 8:00' / '내일 오후 2:30' */
+export function meetupWhen(iso) {
+    const d = new Date(iso);
+    const today = new Date();
+    const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+    const day = d.toDateString() === today.toDateString() ? '오늘'
+        : d.toDateString() === tomorrow.toDateString() ? '내일'
+        : `${d.getMonth() + 1}/${d.getDate()}`;
+    const h = d.getHours();
+    const part = h < 6 ? '새벽' : h < 12 ? '오전' : h < 18 ? '오후' : '저녁';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${day} ${part} ${h12}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 남은 시간: '2시간 40분 후' / '30분 후' / '진행 중' */
+export function until(iso) {
+    const m = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+    if (m <= 0) return '진행 중';
+    if (m < 60) return `${m}분 후`;
+    const h = Math.floor(m / 60);
+    return m % 60 ? `${h}시간 ${m % 60}분 후` : `${h}시간 후`;
+}
+
+/** 오늘/내일 칩 표시용 */
+export function dayLabel(iso) {
+    const d = new Date(iso);
+    return d.toDateString() === new Date().toDateString() ? '오늘' : '내일';
+}

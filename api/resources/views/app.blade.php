@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#F7F5FF">
     <title>소셜링</title>
+    {{-- 홈 화면에 추가(PWA): iPhone은 이렇게 설치해야 웹 푸시를 받을 수 있음 --}}
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="소셜링">
     {{-- 디자인 폰트: 제목 Jua, 본문 Noto Sans KR --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

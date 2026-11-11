@@ -16,7 +16,7 @@ import { auth } from '../lib/auth';
 import { AVATAR_COLORS, AVATAR_FACES } from '../lib/avatar';
 import { disconnectEcho } from '../lib/echo';
 import { uploadPhoto } from '../lib/image';
-import { comingSoon, showToast } from '../lib/toast';
+import { showToast } from '../lib/toast';
 
 const MAX = 9;
 const router = useRouter();
@@ -196,8 +196,12 @@ onMounted(() => load().catch((e) => showToast(errMsg(e, '정보를 불러오지 
                     친구 목록
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                 </button>
-                <button v-for="m in ['차단 목록', '알림 설정']" :key="m" @click="comingSoon(m)">
-                    {{ m }}
+                <button @click="router.push({ name: 'blocks' })">
+                    차단 목록
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                </button>
+                <button @click="router.push({ name: 'notification-settings' })">
+                    알림 설정
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                 </button>
             </div>

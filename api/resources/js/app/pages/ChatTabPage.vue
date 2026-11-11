@@ -8,6 +8,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
+import MeetupCard from '../components/MeetupCard.vue';
 import TabBar from '../components/TabBar.vue';
 import { ApiError, get } from '../lib/api';
 import { auth } from '../lib/auth';
@@ -21,6 +22,7 @@ const router = useRouter();
 
 const tab = ref(route.query.tab === 'friends' ? 'friends' : 'chats');
 const chats = ref([]);
+const meetupRooms = ref([]);   // 번개 채팅방 (상단 고정)
 const friends = ref([]);
 const receivedCount = ref(0);
 const q = ref('');
@@ -37,7 +39,8 @@ async function load() {
     loading.value = true;
     try {
         if (!auth.me) auth.me = (await get('/me')).data;
-        const [c, f] = await Promise.all([get('/chats'), get('/friends')]);
+        const [c, f, mt] = await Promise.all([get('/chats'), get('/friends'), get('/meetups/mine')]);
+        meetupRooms.value = mt.data;
         chats.value = c.data;
         friends.value = f.data;
         receivedCount.value = auth.me.stats?.received_requests ?? 0;
@@ -67,7 +70,8 @@ onMounted(async () => {
         connectEcho().private(channelName).listen('.dm.sent', onIncoming);
     }
 });
-onBeforeUnmount(() => channelName && window.Echo?.leave(channelName));
+// 개인 채널은 알림(lib/notify.js)도 같이 쓰므로 leave 금지 → 이 화면의 이벤트만 해제
+onBeforeUnmount(() => channelName && window.Echo?.private(channelName).stopListening('.dm.sent', onIncoming));
 </script>
 
 <template>
@@ -87,6 +91,20 @@ onBeforeUnmount(() => channelName && window.Echo?.leave(channelName));
         <div class="body scroll">
             <!-- 대화 목록 -->
             <template v-if="tab === 'chats'">
+                <section v-if="meetupRooms.length" class="sec">
+                    <h2>번개 채팅방</h2>
+                    <button v-for="m in meetupRooms" :key="m.id" class="plain" @click="router.push({ name: 'meetup-room', params: { id: m.id } })">
+                        <MeetupCard :m="m" highlight>
+                            <span class="last">{{ m.last_message ? `${m.last_message.sender ? `${m.last_message.sender}: ` : ''}${m.last_message.body}` : '아직 대화가 없어요' }}</span>
+                            <template #side>
+                                <span class="side">
+                                    <small v-if="m.last_message">{{ ago(m.last_message.created_at) }}</small>
+                                    <span v-if="m.unread" class="badge">{{ m.unread > 99 ? '99+' : m.unread }}</span>
+                                </span>
+                            </template>
+                        </MeetupCard>
+                    </button>
+                </section>
                 <section class="sec">
                     <h2>친구와 대화</h2>
                     <div v-if="chats.length" class="list">
@@ -172,6 +190,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--c-muted); }
 .side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
 .side small { font-size: 11px; color: var(--c-muted); }
 .badge { min-width: 20px; height: 20px; border-radius: 10px; background: #E04A36; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+.plain { border: none; background: none; padding: 0; text-align: left; width: 100%; }
 .note { font-size: 12px; color: var(--c-muted); text-align: center; }
 .empty { margin: 0; padding: 28px 20px; background: var(--c-surface); border-radius: 18px; text-align: center; font-size: 14px; color: var(--c-muted); line-height: 1.6; white-space: pre-line; }
 

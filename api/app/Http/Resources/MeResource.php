@@ -17,6 +17,7 @@ class MeResource extends JsonResource
             'id' => $this->id,
             'nickname' => $this->nickname,
             'status' => $this->status,
+            'suspended_until' => $this->suspended_until?->toIso8601String(),
             'gender' => $this->identity?->gender,
             'age' => $this->identity?->age(),
             'bio' => $this->profile?->bio,
@@ -30,6 +31,7 @@ class MeResource extends JsonResource
                 'friends' => Friendship::where('user_id', $this->id)->count(),
                 'received_requests' => FriendRequest::alive()->where('to_id', $this->id)->where('status', FriendRequest::PENDING)->count(),
                 'photos' => ProfilePhoto::where('user_id', $this->id)->count(),
+                'unread_notifications' => $this->unreadNotifications()->count(), // 종 아이콘 숫자
             ],
         ];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Chat;
 
+use App\Notifications\Notify;
 use App\Events\DmMessageSent;
 use App\Events\DmRead;
 use App\Exceptions\DomainException;
@@ -56,6 +57,10 @@ class DmService
 
         $message->load('sender.avatar');
         broadcast(new DmMessageSent($room->id, $other, $message))->toOthers();
+        // 상대 폰 푸시 (설정·구독이 있을 때만 실제로 나감)
+        if ($to = User::find($other)) {
+            Notify::dm($me, $to, $room->id, $body);
+        }
 
         return $message;
     }
