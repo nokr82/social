@@ -8,6 +8,9 @@ use App\Services\Identity\PassIdentityVerifier;
 use App\Services\Plaza\ArrayPlazaPresence;
 use App\Services\Plaza\PlazaPresence;
 use App\Services\Plaza\RedisPlazaPresence;
+use App\Services\Region\FakeRegionResolver;
+use App\Services\Region\KakaoRegionResolver;
+use App\Services\Region\RegionResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -27,6 +30,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PlazaPresence::class, fn () => config('social.drivers.presence') === 'array'
             ? new ArrayPlazaPresence
             : new RedisPlazaPresence);
+
+        // 동네(법정동) 찾기: 운영은 카카오 로컬 API, 개발·테스트는 가짜
+        $this->app->singleton(RegionResolver::class, fn () => config('social.drivers.region') === 'kakao'
+            ? new KakaoRegionResolver
+            : new FakeRegionResolver);
     }
 
     public function boot(): void
@@ -35,6 +43,10 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->isProduction()
             && (config('social.drivers.social') === 'fake' || config('social.drivers.identity') === 'fake')) {
             throw new RuntimeException('운영환경에서 fake 로그인/본인인증 드라이버를 사용할 수 없습니다.');
+        }
+        // 운영에서 가짜 동네(모두 '역삼동')가 나가면 안 됨
+        if ($this->app->isProduction() && config('social.drivers.region') !== 'kakao') {
+            throw new RuntimeException('운영환경에서는 REGION_DRIVER=kakao와 KAKAO_REST_API_KEY가 필요합니다.');
         }
 
         // 채팅 도배 방지: 사용자당 분당 30개

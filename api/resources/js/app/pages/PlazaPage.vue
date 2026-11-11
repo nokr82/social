@@ -16,7 +16,7 @@ import AvatarFace from '../components/AvatarFace.vue';
 import FriendRequestSheet from '../components/FriendRequestSheet.vue';
 import HeartIcon from '../components/HeartIcon.vue';
 import LockIcon from '../components/LockIcon.vue';
-import { ApiError, api, get, post } from '../lib/api';
+import { ApiError, api, del, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
 import { seededSpot } from '../lib/avatar';
 import { connectEcho } from '../lib/echo';
@@ -44,6 +44,12 @@ const draft = ref('');
 const sending = ref(false);
 const hasOlder = ref(true);
 const chatEl = ref(null);
+const membersReady = ref(false);      // presence here() 수신 전에는 방장 부재 판단 안 함
+const kicked = ref(new Set());        // 이번 접속 중 강퇴된 사람 (구독이 남아 있어도 화면·whisper에서 제외)
+const hostSheet = ref(null);          // 방장 시트 {mode: 'kick'|'transfer'|'close'|'kicks', user?}
+const kickList = ref(null);           // 강퇴 목록 (null = 불러오는 중)
+const kickReasons = ref([]);          // GET /meta/kick-reasons (처음 열 때 1번)
+const hostBusy = ref(false);
 
 let channel = null;
 let heartbeatTimer = null;
@@ -72,11 +78,24 @@ const STAGE_H = 300;
 
 /** 화면에 그릴 아바타: 접속자 + 위치 + 말풍선 */
 const avatars = computed(() => members.value
-    .filter((m) => !blocked.value.has(m.id))
+    .filter((m) => !blocked.value.has(m.id) && !kicked.value.has(m.id))
     .map((m) => {
         const pos = positions[m.id] ?? spotFor(m.id); // placeNew 전 한 프레임 동안의 임시 자리
-        return { ...m, pos, me: m.id === meId.value, bubble: bubbles[m.id], emote: EMOTE_MAP[emotes[m.id]] };
+        return {
+            ...m, pos, me: m.id === meId.value, host: m.id === plaza.value?.host_id,
+            bubble: bubbles[m.id], emote: EMOTE_MAP[emotes[m.id]],
+        };
     }));
+
+const isHost = computed(() => !!plaza.value && plaza.value.host_id === meId.value);
+
+/**
+ * 방장 부재 안내: 방장이 실시간 연결(presence)에 없으면 손님에게 띠를 보여줌.
+ * 서버는 3분(host_grace) 뒤 위임·닫기를 하므로 문구도 그 기준.
+ * 방장이 프로필만 잠깐 봐도 뜨지만, 돌아오면 joining으로 바로 사라진다.
+ */
+const hostAway = computed(() => membersReady.value && !!plaza.value && !isHost.value
+    && !members.value.some((m) => m.id === plaza.value.host_id));
 
 function spotFor(userId) {
     // 아직 위치를 모르는 사람은 ID로 정해진 자리 (모든 화면에서 동일)
@@ -130,8 +149,54 @@ async function enter() {
 }
 
 function onHeartbeatError(e) {
-    // 네트워크가 끊겼다 돌아와 이탈 처리된 경우 → 다시 입장
-    if (e instanceof ApiError && e.code === 'NOT_IN_PLAZA') post(`/plazas/${props.id}/enter`).catch(() => {});
+    // 실시간 알림을 놓쳤어도 heartbeat에서 닫힘을 알게 됨
+    if (e instanceof ApiError && e.code === 'PLAZA_CLOSED') return onClosed();
+    // 네트워크가 끊겼다 돌아와 이탈 처리된 경우 → 다시 입장 (강퇴됐거나 닫혔으면 여기서 알게 됨)
+    if (e instanceof ApiError && e.code === 'NOT_IN_PLAZA') {
+        post(`/plazas/${props.id}/enter`).catch((err) => {
+            if (err instanceof ApiError && err.code === 'KICKED') onKickedMe();
+            else if (err instanceof ApiError && err.code === 'PLAZA_CLOSED') onClosed();
+        });
+    }
+}
+
+/** 방장 변경: 3분 부재로 자동 위임됐거나 방장이 직접 넘김 */
+function onHostChanged({ host }) {
+    if (!host) return;
+    const isMe = host.id === meId.value;
+    if (plaza.value) Object.assign(plaza.value, { host_id: host.id, is_host: isMe });
+    // 차단 관계인 사람이면 닉네임 대신 일반 문구
+    pushSystem(blocked.value.has(host.id) ? '방장이 바뀌었어요' : `${host.nickname}님이 새 방장이 됐어요`);
+    if (isMe) showToast('내가 방장이 됐어요. 광장을 떠나면 3분 뒤 다른 사람에게 넘어가요', 4000);
+}
+
+/** 광장이 닫힘 → 목록으로 (실시간 이벤트·heartbeat 410 어느 쪽이 먼저 와도 한 번만) */
+const CLOSED_TEXT = {
+    host_left: '방장이 나가서 광장이 닫혔어요',
+    host_closed: '방장이 광장을 닫았어요',
+    admin: '운영 정책에 따라 광장이 닫혔어요',
+};
+let closedHandled = false;
+function onClosed(e) {
+    if (closedHandled) return;
+    closedHandled = true;
+    showToast(CLOSED_TEXT[e?.reason] ?? '광장이 닫혔어요', 3000);
+    router.replace({ name: 'main' });
+}
+
+/** 강퇴 알림: 나면 목록으로, 다른 사람이면 화면에서 지움 */
+function onMemberKicked({ user_id: userId }) {
+    if (userId === meId.value) return onKickedMe();
+    kicked.value = new Set(kicked.value).add(userId);
+    delete positions[userId];
+    if (selected.value?.id === userId) selected.value = null;
+}
+
+function onKickedMe() {
+    if (closedHandled) return;
+    closedHandled = true; // 닫힘 처리와 겹치지 않게 같은 플래그 사용
+    showToast('방장이 광장에서 내보냈어요. 방장이 해제하기 전까지 들어올 수 없어요', 4000);
+    router.replace({ name: 'main' });
 }
 
 function joinChannel() {
@@ -139,6 +204,7 @@ function joinChannel() {
     channel = echo.join(`plaza.${props.id}`)
         .here((users) => {
             members.value = users;
+            membersReady.value = true;
             [...users].sort((a, b) => a.id - b.id).forEach((u) => placeNew(u.id));
             whisperMyPosition();
         })
@@ -153,15 +219,18 @@ function joinChannel() {
             delete positions[user.id];
             if (selected.value?.id === user.id) selected.value = null;
         })
+        .listen('.plaza.closed', onClosed)
+        .listen('.plaza.host_changed', onHostChanged)
+        .listen('.plaza.member_kicked', onMemberKicked)
         .listen('.message.sent', (msg) => {
             if (blocked.value.has(msg.sender?.id)) return; // 차단 관계는 실시간에서도 숨김
             appendMessage(msg);
         })
         .listenForWhisper('move', (e) => {
-            if (typeof e?.id === 'number' && !blocked.value.has(e.id)) positions[e.id] = clampPos(e);
+            if (typeof e?.id === 'number' && !blocked.value.has(e.id) && !kicked.value.has(e.id)) positions[e.id] = clampPos(e);
         })
         .listenForWhisper('emote', (e) => {
-            if (typeof e?.id === 'number' && EMOTE_MAP[e.code] && !blocked.value.has(e.id)) showEmote(e.id, e.code);
+            if (typeof e?.id === 'number' && EMOTE_MAP[e.code] && !blocked.value.has(e.id) && !kicked.value.has(e.id)) showEmote(e.id, e.code);
         })
         .error(() => showToast('실시간 연결에 문제가 있어요. 잠시 후 다시 들어와 주세요'));
 }
@@ -243,6 +312,75 @@ function onRequestSent() {
     showToast('친구 요청을 보냈어요');
 }
 
+/* ---------------- 방장 권한: 내보내기 · 넘기기 · 닫기 ---------------- */
+
+async function openHostSheet(mode, user = null) {
+    hostSheet.value = { mode, user };
+    if (mode === 'kick' && !kickReasons.value.length) {
+        kickReasons.value = (await get('/meta/kick-reasons').catch(() => ({ data: [] }))).data;
+    }
+    if (mode === 'kicks') {
+        kickList.value = null;
+        kickList.value = (await get(`/plazas/${props.id}/kicks`).catch(() => ({ data: [] }))).data;
+    }
+}
+
+/** 강퇴 해제: 실수로 내보낸 사람을 다시 들어올 수 있게 */
+async function revokeKick(k) {
+    if (hostBusy.value) return;
+    hostBusy.value = true;
+    try {
+        await del(`/plazas/${props.id}/kicks/${k.id}`);
+        kickList.value = kickList.value.filter((x) => x.id !== k.id);
+        const next = new Set(kicked.value);
+        next.delete(k.user.id); // 다시 들어오면 화면에 보이도록
+        kicked.value = next;
+        showToast(`${k.user.nickname}님을 해제했어요. 이제 다시 들어올 수 있어요`);
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : '잠시 후 다시 시도해 주세요');
+    } finally {
+        hostBusy.value = false;
+    }
+}
+
+async function hostAction(path, body) {
+    if (hostBusy.value) return false;
+    hostBusy.value = true;
+    try {
+        await post(`/plazas/${props.id}/${path}`, body);
+        return true;
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : '잠시 후 다시 시도해 주세요');
+        return false;
+    } finally {
+        hostBusy.value = false;
+    }
+}
+
+async function doKick(reason) {
+    const user = hostSheet.value?.user;
+    if (!user || !(await hostAction('kick', { user_id: user.id, reason }))) return;
+    hostSheet.value = null;
+    onMemberKicked({ user_id: user.id }); // 실시간 알림을 기다리지 않고 내 화면에서 바로 지움
+    showToast(`${user.nickname}님을 내보냈어요. 참여자 목록 > 내보낸 사람에서 해제할 수 있어요`, 3500);
+}
+
+async function doTransfer() {
+    const user = hostSheet.value?.user;
+    if (!user || !(await hostAction('transfer', { user_id: user.id }))) return;
+    hostSheet.value = null;
+    selected.value = null;
+    // 시스템 메시지는 실시간 알림(onHostChanged)에서 모두에게 똑같이 표시
+    Object.assign(plaza.value, { host_id: user.id, is_host: false });
+}
+
+async function doClose() {
+    if (!(await hostAction('close'))) return;
+    closedHandled = true; // 내가 닫았으니 '방장이 닫았어요' 대신 아래 문구
+    showToast('광장을 닫았어요');
+    router.replace({ name: 'main' });
+}
+
 function openProfile(user) {
     router.push({ name: 'profile', params: { id: user.id }, query: { from: props.id } });
 }
@@ -276,6 +414,7 @@ async function send() {
         draft.value = '';
         appendMessage(res.data);
     } catch (e) {
+        if (e instanceof ApiError && e.code === 'PLAZA_CLOSED') return onClosed();
         showToast(e instanceof ApiError ? e.message : '메시지를 보내지 못했어요');
     } finally {
         sending.value = false;
@@ -308,6 +447,16 @@ function timeLabel(iso) {
     if (diff < 60) return '방금';
     if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
     return new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+}
+
+/** 강퇴 목록용: 며칠 전 일도 있으므로 '3시간 전 · 2일 전' 형태 */
+function agoLabel(iso) {
+    if (!iso) return '';
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1) return '방금';
+    if (min < 60) return `${min}분 전`;
+    if (min < 1440) return `${Math.floor(min / 60)}시간 전`;
+    return `${Math.floor(min / 1440)}일 전`;
 }
 
 function openReport(user) {
@@ -363,9 +512,14 @@ onBeforeUnmount(leave);
             >
                 <span v-if="a.emote" class="emote-pop" aria-hidden="true">{{ a.emote }}</span>
                 <span v-if="a.bubble" class="bubble">{{ a.bubble }}</span>
-                <span class="face" :class="{ me: a.me, bounce: a.emote }"><AvatarFace :parts="a.avatar" :size="40" /></span>
-                <span class="tag">{{ a.me ? '나' : a.nickname }}</span>
+                <span class="face" :class="{ me: a.me, bounce: a.emote }">
+                    <AvatarFace :parts="a.avatar" :size="40" />
+                    <span v-if="a.host" class="crown" aria-hidden="true">👑</span>
+                </span>
+                <span class="tag">{{ a.me ? '나' : a.nickname }}<template v-if="a.host"> · 방장</template></span>
             </button>
+
+            <p v-if="hostAway" class="away" role="status">방장이 자리를 비웠어요 · 3분 안에 안 돌아오면 방장이 바뀌거나 광장이 닫혀요</p>
 
             <p v-if="members.length <= 1" class="alone" aria-live="polite">아직 혼자예요. 바닥을 눌러 돌아다녀 보세요!</p>
 
@@ -404,6 +558,11 @@ onBeforeUnmount(leave);
                     <button v-else-if="card.relation === 'received'" class="solid" @click="router.push({ name: 'friend-requests' })">받은 요청 보기</button>
                     <button v-else class="solid muted" disabled>친구</button>
                     <button class="line" @click="openProfile(selected)">프로필 보기</button>
+                </div>
+                <!-- 방장 전용 -->
+                <div v-if="isHost" class="host-actions">
+                    <button type="button" @click="openHostSheet('transfer', selected)">👑 방장 넘기기</button>
+                    <button type="button" class="danger" @click="openHostSheet('kick', selected)">내보내기</button>
                 </div>
             </div>
         </div>
@@ -468,8 +627,51 @@ onBeforeUnmount(leave);
                     <button v-for="m in avatars" :key="m.id" class="person" @click="!m.me && ((selected = m), (showMembers = false))">
                         <AvatarFace :parts="m.avatar" :size="36" />
                         <span>{{ m.nickname }}<small v-if="m.me"> (나)</small></span>
+                        <span v-if="m.host" class="host-badge">👑 방장</span>
                     </button>
                 </div>
+                <template v-if="isHost">
+                    <button type="button" class="kick-manage" @click="(showMembers = false), openHostSheet('kicks')">내보낸 사람 관리</button>
+                    <button type="button" class="close-plaza" @click="(showMembers = false), openHostSheet('close')">광장 닫기</button>
+                </template>
+            </div>
+        </div>
+
+        <!-- 방장 확인 시트: 내보내기(사유 선택) · 넘기기 · 닫기 -->
+        <div v-if="hostSheet" class="dim" @click.self="hostSheet = null">
+            <div class="sheet" role="dialog" aria-modal="true" :aria-label="{ close: '광장 닫기', kick: '내보내기', transfer: '방장 넘기기', kicks: '내보낸 사람' }[hostSheet.mode]">
+                <div class="grip" />
+                <template v-if="hostSheet.mode === 'kick'">
+                    <b class="sheet-title">{{ hostSheet.user.nickname }}님을 내보낼까요?</b>
+                    <p class="sheet-desc">해제하기 전까지 이 광장에 다시 들어올 수 없어요. 실수했다면 참여자 목록 &gt; 내보낸 사람 관리에서 해제할 수 있어요.</p>
+                    <div class="reason-list">
+                        <button v-for="r in kickReasons" :key="r.code" type="button" :disabled="hostBusy" @click="doKick(r.code)">{{ r.label }}</button>
+                    </div>
+                </template>
+                <template v-else-if="hostSheet.mode === 'transfer'">
+                    <b class="sheet-title">{{ hostSheet.user.nickname }}님에게 방장을 넘길까요?</b>
+                    <p class="sheet-desc">넘긴 뒤에는 되돌릴 수 없어요. 매너점수가 기준 이상인 사람에게만 넘길 수 있어요.</p>
+                    <button type="button" class="sheet-ok" :disabled="hostBusy" @click="doTransfer">넘기기</button>
+                </template>
+                <template v-else-if="hostSheet.mode === 'kicks'">
+                    <b class="sheet-title">내보낸 사람 {{ kickList?.length ?? '' }}</b>
+                    <p class="sheet-desc">해제하면 다시 이 광장에 들어올 수 있어요.</p>
+                    <div class="list scroll">
+                        <p v-if="kickList === null" class="sheet-desc">불러오는 중…</p>
+                        <p v-else-if="!kickList.length" class="sheet-desc">내보낸 사람이 없어요</p>
+                        <div v-for="k in kickList" :key="k.id" class="person">
+                            <AvatarFace :parts="k.user?.avatar" :size="36" />
+                            <span>{{ k.user?.nickname ?? '알 수 없음' }}<small> · {{ k.reason_label }} · {{ agoLabel(k.kicked_at) }}</small></span>
+                            <button type="button" class="revoke" :disabled="hostBusy" @click="revokeKick(k)">해제</button>
+                        </div>
+                    </div>
+                </template>
+                <template v-else>
+                    <b class="sheet-title">광장을 닫을까요?</b>
+                    <p class="sheet-desc">지금 있는 모두가 목록으로 나가고, 닫은 광장은 다시 열 수 없어요.</p>
+                    <button type="button" class="sheet-ok danger" :disabled="hostBusy" @click="doClose">닫기</button>
+                </template>
+                <button type="button" class="sheet-cancel" @click="hostSheet = null">취소</button>
             </div>
         </div>
     </div>
@@ -507,6 +709,9 @@ onBeforeUnmount(leave);
 .bubble { background: #fff; border-radius: 10px; padding: 3px 8px; font-size: 11px; font-weight: 700; color: var(--c-ink); white-space: nowrap; box-shadow: 0 2px 6px rgba(31,27,58,.10); }
 .face { width: 46px; height: 46px; border-radius: 23px; display: flex; align-items: center; justify-content: center; border: 3px solid transparent; }
 .face.me { border-color: var(--c-primary); }
+.face { position: relative; }
+.crown { position: absolute; top: -12px; right: -8px; font-size: 16px; transform: rotate(18deg); pointer-events: none; }
+.away { position: absolute; left: 12px; right: 12px; top: 10px; margin: 0; padding: 6px 10px; border-radius: 12px; background: rgba(255,255,255,.92); color: var(--c-ink); font-size: 11px; font-weight: 700; text-align: center; box-shadow: var(--shadow-soft); pointer-events: none; }
 /* 표정: 아바타 위로 떠올랐다 사라짐 + 아바타 통통 */
 .emote-pop { position: absolute; top: -30px; left: 50%; font-size: 26px; transform: translateX(-50%); animation: emote-up 2.5s ease-out forwards; pointer-events: none; }
 @keyframes emote-up {
@@ -574,4 +779,19 @@ onBeforeUnmount(leave);
 .list { display: flex; flex-direction: column; gap: 4px; }
 .person { display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 8px 4px; font-size: 15px; font-weight: 700; color: var(--c-ink); text-align: left; border-radius: 12px; }
 .person small { color: var(--c-muted); font-weight: 500; }
+.host-badge { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--c-primary-deep); background: var(--c-primary-soft); padding: 2px 8px; border-radius: 10px; }
+.kick-manage { height: 44px; border: 1.5px solid var(--c-primary-line); background: var(--c-surface); color: var(--c-primary-ink); border-radius: 14px; font-size: 14px; font-weight: 700; }
+.revoke { margin-left: auto; flex-shrink: 0; height: 32px; padding: 0 14px; border-radius: 10px; border: 1.5px solid var(--c-primary-line); background: var(--c-surface); color: var(--c-primary-ink); font-size: 13px; font-weight: 700; }
+.revoke:disabled { opacity: .5; }
+.close-plaza { height: 44px; border: 1.5px solid #F2C4CE; background: #FFF5F7; color: #D63E5C; border-radius: 14px; font-size: 14px; font-weight: 700; }
+.host-actions { display: flex; gap: 6px; }
+.host-actions button { flex: 1; height: 36px; border-radius: 12px; border: 1.5px solid var(--c-primary-line); background: var(--c-surface); color: var(--c-primary-ink); font-size: 13px; font-weight: 700; }
+.host-actions .danger, .reason-list button { border-color: #F2C4CE; color: #D63E5C; background: #FFF5F7; }
+.sheet-desc { margin: -4px 0 0; font-size: 13px; color: var(--c-muted); line-height: 1.5; }
+.reason-list { display: flex; flex-direction: column; gap: 6px; }
+.reason-list button { height: 46px; border-radius: 14px; border: 1.5px solid; font-size: 15px; font-weight: 700; }
+.sheet-ok { height: 48px; border: none; border-radius: 14px; background: var(--c-primary); color: #fff; font-size: 15px; font-weight: 700; }
+.sheet-ok.danger { background: #D63E5C; }
+.sheet-cancel { height: 44px; border: none; background: none; color: var(--c-muted); font-size: 14px; font-weight: 700; }
+.reason-list button:disabled, .sheet-ok:disabled { opacity: .5; }
 </style>

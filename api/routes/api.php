@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\PlazaMessageController;
 use App\Http\Controllers\Api\FriendRequestController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\SafetyController;
+use App\Http\Controllers\Api\TownController;
 use App\Http\Controllers\Api\UserProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -34,6 +35,7 @@ Route::get('photos/{photo}/file', [PhotoController::class, 'file'])
 Route::get('chat-images/{message}/file', [ChatController::class, 'imageFile'])
     ->middleware('signed:relative')->name('chat-images.file');
 Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
+Route::get('meta/kick-reasons', [MetaController::class, 'kickReasons']);
 Route::get('meta/push', [MetaController::class, 'push']);
 
 Route::middleware(['auth:sanctum', 'seen'])->group(function () {
@@ -52,6 +54,21 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::post('plazas/{plaza}/enter', [PlazaController::class, 'enter']);
         Route::post('plazas/{plaza}/heartbeat', [PlazaController::class, 'heartbeat']);
         Route::post('plazas/{plaza}/leave', [PlazaController::class, 'leave']);
+        // 동네 상시 광장 (구역·채널)
+        Route::get('town', [TownController::class, 'mine']);
+        Route::get('plazas/{plaza}/town', [TownController::class, 'show']);
+        Route::post('plazas/{plaza}/town/enter', [TownController::class, 'enter'])->middleware('throttle:30,1');
+        Route::post('plazas/{plaza}/town/heartbeat', [TownController::class, 'heartbeat']);
+        Route::post('plazas/{plaza}/town/leave', [TownController::class, 'leave']);
+        Route::get('plazas/{plaza}/town/messages', [TownController::class, 'messages']);
+        Route::post('plazas/{plaza}/town/messages', [TownController::class, 'send'])->middleware('throttle:chat');
+
+        // 방장 권한
+        Route::post('plazas/{plaza}/kick', [PlazaController::class, 'kick'])->middleware('throttle:20,1');
+        Route::get('plazas/{plaza}/kicks', [PlazaController::class, 'kicks']);
+        Route::delete('plazas/{plaza}/kicks/{kick}', [PlazaController::class, 'revokeKick']);
+        Route::post('plazas/{plaza}/transfer', [PlazaController::class, 'transfer'])->middleware('throttle:10,1');
+        Route::post('plazas/{plaza}/close', [PlazaController::class, 'close']);
         Route::get('plazas/{plaza}/messages', [PlazaMessageController::class, 'index']);
         Route::post('plazas/{plaza}/messages', [PlazaMessageController::class, 'store'])->middleware('throttle:chat');
 

@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PlazaResource;
+use App\Http\Resources\AvatarSummary;
 use App\Models\Plaza;
+use App\Models\PlazaKick;
+use App\Models\User;
 use App\Services\Plaza\PlazaService;
 use App\Support\Geo;
 use Illuminate\Http\JsonResponse;
@@ -105,6 +108,59 @@ class PlazaController extends Controller
     public function leave(Request $request, Plaza $plaza): JsonResponse
     {
         $this->plazas->leave($request->user(), $plaza);
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /* ---------------- 방장 권한 ---------------- */
+
+    /** POST /api/plazas/{plaza}/kick  {user_id, reason} — 방장이 해제할 때까지 재입장 불가 */
+    public function kick(Request $request, Plaza $plaza): JsonResponse
+    {
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'reason' => ['required', Rule::in(array_keys(config('social.plaza.kick_reasons')))],
+        ]);
+        $kick = $this->plazas->kick($request->user(), $plaza, User::findOrFail($data['user_id']), $data['reason']);
+
+        return response()->json(['status' => 'ok', 'kick_id' => $kick->id]);
+    }
+
+    /** GET /api/plazas/{plaza}/kicks — 강퇴 목록 (방장만) */
+    public function kicks(Request $request, Plaza $plaza): JsonResponse
+    {
+        $reasons = config('social.plaza.kick_reasons');
+        $data = $this->plazas->kicks($request->user(), $plaza)->map(fn (PlazaKick $k) => [
+            'id' => $k->id,
+            'user' => AvatarSummary::of($k->user),
+            'reason_label' => $reasons[$k->reason] ?? $k->reason,
+            'kicked_at' => $k->created_at?->toIso8601String(),
+        ]);
+
+        return response()->json(['data' => $data]);
+    }
+
+    /** DELETE /api/plazas/{plaza}/kicks/{kick} — 강퇴 해제 (방장만) */
+    public function revokeKick(Request $request, Plaza $plaza, PlazaKick $kick): JsonResponse
+    {
+        $this->plazas->revokeKick($request->user(), $plaza, $kick);
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /** POST /api/plazas/{plaza}/transfer  {user_id} — 방장 넘기기 */
+    public function transfer(Request $request, Plaza $plaza): JsonResponse
+    {
+        $data = $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
+        $this->plazas->transferHost($request->user(), $plaza, User::findOrFail($data['user_id']));
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /** POST /api/plazas/{plaza}/close — 방장이 광장 닫기 */
+    public function close(Request $request, Plaza $plaza): JsonResponse
+    {
+        $this->plazas->closeByHost($request->user(), $plaza);
 
         return response()->json(['status' => 'ok']);
     }

@@ -24,7 +24,8 @@ Nov 10, 2026 · 설계서 v0.1 + 메인 디자인(광장 목록) 기준
 | profiles | user_id(PK), bio, interests(JSON) | |
 | avatars | user_id(PK), parts(JSON), version | |
 | trust_scores | user_id(PK), score(0~1000, 기본 500), attend/noshow/report_count | 산식 비공개 |
-| plazas | id, host_id, name, category, region_cell(geohash7), lat, lng, capacity, status | lat/lng는 **격자 중심값**(실제 좌표 아님) |
+| plazas | id, type(user/town), region_code(상시 광장 법정동, UQ), host_id(상시 광장은 null), name, category, region_cell(geohash7), lat, lng, capacity, status, host_seen_at, closed_at, closed_reason | lat/lng는 **격자 중심값**(실제 좌표 아님) |
+| chat_messages.channel | 상시 광장 "구역:채널" | INDEX(room_id, channel, id) |
 | chat_rooms | id, type(plaza/meetup/dm/match), ref_id | UQ(type, ref_id) |
 | chat_messages | id, room_id, sender_id, type(text/system), body, created_at | 인덱스(room_id, id) |
 | blocks | blocker_id, blocked_id | PK 복합. 양방향 적용은 조회 시 처리 |
@@ -50,6 +51,7 @@ Nov 10, 2026 · 설계서 v0.1 + 메인 디자인(광장 목록) 기준
 |---|---|---|
 | profile_photos | user_id, path, visibility, sort_order, like_count | 0번=대표(항상 공개), 최대 9장, 하트는 비정규화 |
 | photo_likes | photo_id, user_id (PK 복합) | 사진당 1회, 다시 누르면 삭제 |
+| plaza_kicks | plaza_id, user_id, kicked_by, reason, revoked_at, revoked_by | 방장 강퇴. 해제(revoked_at) 전까지 재입장·목록 노출 불가. 해제해도 기록 유지 (expires_at은 미사용) |
 | friend_requests | from_id, to_id, status, message, plaza_id, expires_at | 7일 만료는 조회 조건으로 (크론 없음) |
 | friendships | user_id, friend_id (PK 복합), plaza_id | 양방향 2행 |
 

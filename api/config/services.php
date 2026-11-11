@@ -28,6 +28,11 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // 카카오 로컬 API (좌표 → 동네 이름). 카카오 로그인과 같은 앱의 'REST API 키'
+    'kakao' => [
+        'rest_key' => env('KAKAO_REST_API_KEY'),
+    ],
+
     // 애플 로그인: identity_token의 aud(앱 번들 ID) 검증용
     'apple' => [
         'client_id' => env('APPLE_CLIENT_ID'),

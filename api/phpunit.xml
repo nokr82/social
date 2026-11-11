@@ -32,6 +32,7 @@
         <env name="SOCIAL_LOGIN_DRIVER" value="fake"/>
         <env name="IDENTITY_DRIVER" value="fake"/>
         <env name="PRESENCE_DRIVER" value="array"/>
+        <env name="REGION_DRIVER" value="fake"/>
         <env name="CI_PEPPER" value="test-pepper"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

@@ -198,4 +198,15 @@ class MeetupTest extends TestCase
             ->assertJsonPath('data.0.distance_label', '500m 이내');
         $this->actingAs($viewer)->getJson('/api/meetups?lat=35.1&lng=129.0')->assertJsonCount(0, 'data');
     }
+
+    /** 닫힌 광장에는 번개를 열 수 없음 */
+    public function test_cannot_create_meetup_in_closed_plaza(): void
+    {
+        $this->plaza->forceFill(['status' => Plaza::STATUS_CLOSED])->save();
+
+        $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/meetups", [
+            'title' => '퇴근하고 한잔해요', 'area_label' => '역삼역 근처', 'place_detail' => 'x',
+            'starts_at' => now()->addHours(3)->toIso8601String(), 'capacity' => 4, 'age_rule' => 'any',
+        ])->assertStatus(410)->assertJson(['code' => 'PLAZA_CLOSED']);
+    }
 }

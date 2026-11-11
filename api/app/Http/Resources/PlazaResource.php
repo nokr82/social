@@ -15,6 +15,7 @@ class PlazaResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'type' => $this->type, // user(주민 광장) | town(동네 상시 광장)
             'name' => $this->name,
             'description' => $this->description,
             'category' => $this->category,
@@ -26,7 +27,8 @@ class PlazaResource extends JsonResource
             'preview_avatars' => $this->preview_avatars ?? [],
             // 10분 안에 올라온 메시지만 '지금 하는 말'로 보여줌 (오래된 말풍선은 숨김)
             'last_message' => $this->last_message_at?->gt(now()->subMinutes(10)) ? $this->last_message_body : null,
-            'is_host' => $request->user()?->id === $this->host_id,
+            'host_id' => (int) $this->host_id, // 광장 안에서 방장 아바타에 왕관 표시용 (아바타 id와 비교)
+            'is_host' => (int) $request->user()?->id === (int) $this->host_id,
             'status' => $this->status,
         ];
     }

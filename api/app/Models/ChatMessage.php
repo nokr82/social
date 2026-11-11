@@ -17,7 +17,7 @@ class ChatMessage extends Model
     // DB 기본값과 동일 (create() 직후 응답에 type이 null로 나가지 않도록)
     protected $attributes = ['type' => self::TEXT];
 
-    protected $fillable = ['room_id', 'sender_id', 'type', 'body', 'meta'];
+    protected $fillable = ['room_id', 'channel', 'sender_id', 'type', 'body', 'meta']; // channel: 상시 광장 "구역:채널"
 
     protected function casts(): array
     {

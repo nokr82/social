@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Events\PlazaClosed;
+use App\Events\PlazaHostChanged;
 use App\Models\Block;
 use App\Models\Plaza;
 use App\Models\User;
 use App\Services\Plaza\PlazaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class PlazaTest extends TestCase
@@ -151,6 +154,7 @@ class PlazaTest extends TestCase
             ->assertJsonPath('data.0.last_message', '한판 ㄱ?');
 
         $this->travel(11)->minutes(); // 10분 지나면 말풍선 숨김
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk(); // 방장 부재로 숨겨지지 않게
         $this->actingAs($host)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
             ->assertJsonPath('data.0.last_message', null);
     }
@@ -163,5 +167,196 @@ class PlazaTest extends TestCase
         $this->actingAs($user)->postJson('/api/plazas', [
             'name' => '테스트', 'category' => 'talk', 'lat' => self::LAT, 'lng' => self::LNG,
         ])->assertForbidden()->assertJson(['code' => 'LOW_TRUST']);
+    }
+
+    /* ---------------- 방장이 나가면 광장 닫힘 ---------------- */
+
+    public function test_plaza_closes_when_host_leaves_and_does_not_return(): void
+    {
+        Event::fake([PlazaClosed::class]);
+        $host = User::factory()->complete()->create();
+        $guest = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/leave")->assertOk();
+        $this->travel(config('social.plaza.host_grace') + 1)->seconds();
+
+        // 목록에서는 정리 명령 전에도 바로 숨김
+        $this->actingAs($guest)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)->assertJsonCount(0, 'data');
+
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+        $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
+        Event::assertDispatchedTimes(PlazaClosed::class, 1);
+
+        // 남아 있던 사람: heartbeat에서 410 → 앱이 목록으로
+        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/heartbeat")
+            ->assertStatus(410)->assertJson(['code' => 'PLAZA_CLOSED']);
+
+        // 명령을 다시 돌려도 중복으로 닫거나 알리지 않음
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+        Event::assertDispatchedTimes(PlazaClosed::class, 1);
+    }
+
+    /** 프로필 보기·새로고침처럼 잠깐 나갔다 오면 유지 */
+    public function test_host_returning_within_grace_keeps_plaza_open(): void
+    {
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/leave")->assertOk();
+        $this->travel(config('social.plaza.host_grace') - 30)->seconds();
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->travel(60)->seconds(); // 나간 시점 기준으론 유예시간 초과지만, 돌아왔으니 유지
+
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+        $this->assertSame(Plaza::STATUS_OPEN, $plaza->fresh()->status);
+    }
+
+    /** 방장이 heartbeat만 보내고 있어도(광장 화면에 머묾) 닫히지 않음 */
+    public function test_host_heartbeat_keeps_plaza_open(): void
+    {
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+
+        for ($i = 0; $i < 10; $i++) { // 5분 동안 30초마다
+            $this->travel(30)->seconds();
+            $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
+        }
+
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+        $this->assertSame(Plaza::STATUS_OPEN, $plaza->fresh()->status);
+    }
+
+    /** 정리 명령 전이라도 새로 들어오려는 사람은 막고 그 자리에서 닫음 */
+    public function test_guest_cannot_enter_after_host_gone(): void
+    {
+        Event::fake([PlazaClosed::class]);
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $this->travel(config('social.plaza.host_grace') + 1)->seconds();
+
+        $guest = User::factory()->complete()->create();
+        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/enter")
+            ->assertStatus(410)->assertJson(['code' => 'PLAZA_CLOSED']);
+        $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
+        Event::assertDispatched(PlazaClosed::class);
+    }
+
+    /** 떠난 광장은 '동시에 3개' 제한에 세지 않음 */
+    public function test_abandoned_plazas_do_not_count_toward_host_limit(): void
+    {
+        $host = User::factory()->complete()->create();
+        for ($i = 0; $i < config('social.plaza.max_open_per_host'); $i++) {
+            $this->makePlaza($host, ['name' => "방{$i}"]);
+        }
+        $this->travel(config('social.plaza.host_grace') + 1)->seconds();
+
+        $this->makePlaza($host, ['name' => '새 방']);
+        $this->assertSame(1, Plaza::alive()->where('host_id', $host->id)->count());
+    }
+
+    /* ---------------- 방장 위임 ---------------- */
+
+    /**
+     * 방장이 나간 채 유예시간이 지나는 동안 손님들은 30초마다 heartbeat로 광장에 머문다.
+     * (presence TTL 60초라 heartbeat 없이 시간만 넘기면 접속자도 사라짐)
+     */
+    private function stayUntilHostGone(Plaza $plaza, array $guests): void
+    {
+        for ($i = 0; $i < 5; $i++) { // 150초: 아직 유예시간(180초) 안
+            $this->travel(30)->seconds();
+            foreach ($guests as $g) {
+                $this->actingAs($g)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
+            }
+        }
+        $this->travel(40)->seconds(); // 190초: 방장 부재 확정, 손님들은 아직 접속 중(마지막 heartbeat 40초 전)
+    }
+
+    private function userWithScore(int $score): User
+    {
+        $u = User::factory()->complete()->create();
+        $u->trustScore()->update(['score' => $score]);
+
+        return $u->fresh();
+    }
+
+    public function test_host_is_handed_to_highest_score_eligible_member(): void
+    {
+        Event::fake([PlazaHostChanged::class, PlazaClosed::class]);
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+
+        $low = $this->userWithScore(100);   // 기준(300) 미달 → 제외
+        $mid = $this->userWithScore(500);   // ← 위임 대상
+        $busy = $this->userWithScore(900);  // 점수는 제일 높지만 이미 광장 3개 운영 → 제외
+        foreach ([$low, $mid, $busy] as $u) {
+            $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        }
+        $this->stayUntilHostGone($plaza, [$low, $mid, $busy]);
+        // busy가 운영 중인 광장 3개 (방장 부재로 안 세지도록 위임 직전에 만듦)
+        for ($i = 0; $i < config('social.plaza.max_open_per_host'); $i++) {
+            $this->makePlaza($busy, ['name' => "운영중{$i}"]);
+        }
+
+        // 방장은 없지만 사람이 있어 곧 위임될 방 → 목록에 그대로 보임
+        $listed = array_column($this->actingAs($low)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)->json('data'), 'id');
+        $this->assertContains($plaza->id, $listed);
+
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+
+        $plaza->refresh();
+        $this->assertSame(Plaza::STATUS_OPEN, $plaza->status);
+        $this->assertSame($mid->id, (int) $plaza->host_id);
+        Event::assertDispatched(PlazaHostChanged::class, fn ($e) => $e->plazaId === $plaza->id && $e->host['id'] === $mid->id);
+        Event::assertNotDispatched(PlazaClosed::class);
+
+        // 새 방장이 광장에 있는 동안은 유지 (heartbeat가 host_seen_at 갱신)
+        $this->actingAs($mid)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
+        $this->actingAs($mid)->getJson("/api/plazas/{$plaza->id}")->assertJsonPath('data.is_host', true);
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+        Event::assertDispatchedTimes(PlazaHostChanged::class, 1); // 중복 위임 없음
+    }
+
+    /** 자격 있는 사람이 없으면 닫힘. 정리 명령 전이라도 손님 heartbeat에서 바로 처리 */
+    public function test_plaza_closes_when_no_eligible_member(): void
+    {
+        Event::fake([PlazaHostChanged::class, PlazaClosed::class]);
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $low = $this->userWithScore(100);
+        $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->travel(30)->seconds();
+            $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
+        }
+        $this->travel(40)->seconds();
+
+        $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/heartbeat")
+            ->assertStatus(410)->assertJson(['code' => 'PLAZA_CLOSED']);
+        $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
+        Event::assertNotDispatched(PlazaHostChanged::class);
+        Event::assertDispatchedTimes(PlazaClosed::class, 1);
+    }
+
+    /** 정지된 계정은 점수가 높아도 방장이 될 수 없음 */
+    public function test_inactive_member_is_not_eligible(): void
+    {
+        Event::fake([PlazaHostChanged::class, PlazaClosed::class]);
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $member = $this->userWithScore(900);
+        $this->actingAs($member)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->stayUntilHostGone($plaza, [$member]);
+
+        $member->forceFill(['status' => 'suspended'])->save(); // 접속 중에 정지됨
+
+        $this->artisan('plazas:close-abandoned')->assertSuccessful();
+        $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
+        Event::assertNotDispatched(PlazaHostChanged::class);
     }
 }

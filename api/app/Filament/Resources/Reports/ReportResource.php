@@ -6,6 +6,7 @@ use App\Exceptions\DomainException;
 use App\Filament\Resources\Reports\Pages\ManageReports;
 use App\Models\ChatMessage;
 use App\Models\Plaza;
+use App\Services\Plaza\PlazaService;
 use App\Models\Report;
 use App\Services\Moderation\ModerationService;
 use BackedEnum;
@@ -135,6 +136,23 @@ class ReportResource extends Resource
                         self::run(fn (ModerationService $m) => $m->resolve(
                             auth('admin')->user(), $record, false, 'none', null, $data['note'] ?? null,
                         ), '신고를 반려했어요');
+                    }),
+
+                // 광장 신고: 승인·반려와 별개로 광장 자체를 바로 닫음 (접속자에게 '운영 정책에 따라 닫힘' 안내)
+                Action::make('closePlaza')
+                    ->label('광장 닫기')
+                    ->icon(Heroicon::XMark)
+                    ->color('danger')
+                    ->visible(fn (Report $record) => $record->target_type === 'plaza'
+                        && Plaza::whereKey($record->target_ref_id)->where('status', Plaza::STATUS_OPEN)->exists())
+                    ->requiresConfirmation()
+                    ->modalHeading('신고된 광장 닫기')
+                    ->modalDescription('광장이 바로 닫히고 안에 있던 사람은 목록으로 나가요. 되돌릴 수 없어요. 신고 처리(승인·반려)는 따로 해 주세요.')
+                    ->action(function (Report $record) {
+                        $plaza = Plaza::find($record->target_ref_id);
+                        $closed = $plaza && app(PlazaService::class)->close($plaza, 'admin');
+                        Notification::make()->title($closed ? '광장을 닫았어요' : '이미 닫힌 광장이에요')
+                            ->{$closed ? 'success' : 'warning'}()->send();
                     }),
             ]);
     }

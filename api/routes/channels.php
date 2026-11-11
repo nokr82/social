@@ -46,3 +46,17 @@ Broadcast::channel('plaza.{plaza}', function (User $user, Plaza $plaza) {
 
     return AvatarSummary::of($user->loadMissing('avatar'));
 });
+
+/*
+| 상시 광장 구역 presence 채널: presence-town.{광장}.{구역}.{채널}
+| - 입장 API(POST /plazas/{id}/town/enter)로 그 구역·채널에 배정된 사람만 구독 가능
+| - 같은 구역·채널 사람끼리만 서로 보이고(아바타) 대화한다
+*/
+Broadcast::channel('town.{plaza}.{zone}.{channel}', function (User $user, Plaza $plaza, string $zone, string $channel) {
+    if (! $user->isActive() || ! $plaza->isTown()
+        || ! app(PlazaPresence::class)->has("{$plaza->id}:{$zone}:{$channel}", $user->id)) {
+        return false;
+    }
+
+    return AvatarSummary::of($user->loadMissing('avatar'));
+});

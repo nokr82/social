@@ -22,20 +22,44 @@
 | PUT | /api/me/location | lat, lng → geohash6만 저장 |
 | PUT | /api/me/avatar | parts{color(apricot/mint/sky/pink/yellow/lavender), face(smile/grin/calm)} |
 
+## 동네 상시 광장 (구역·채널)
+
+법정동마다 1개(카카오 로컬 API, 150m 칸별 30일 캐시) · 방장 없음·닫히지 않음 · 구역 5개(config `social.town.zones`) × 채널 30명 · 같은 구역·채널끼리만 보이고 대화
+
+| 메서드 | 경로 | 입력 | 비고 |
+|---|---|---|---|
+| GET | /api/town | lat, lng | 메인 카드 `{id, name, region_name, live_count, preview_avatars[], bubbles[], friends{count, avatars}}` · 동네 없으면 `data: null` · `REGION_UNAVAILABLE`(503) |
+| GET | /api/plazas/{id}/town | — | `{live_count, channel_capacity, zones[{key, name, topic, count, channels[{no, count, full}]}]}` |
+| POST | /api/plazas/{id}/town/enter | zone?, channel? | 입장·이동. 안 고르면 가장 북적이는 구역 + 자리 남은 앞 채널 · `CHANNEL_FULL` · `{zone, channel, presence_channel, state}` |
+| POST | /api/plazas/{id}/town/heartbeat · leave | zone, channel | 30초마다 |
+| GET·POST | /api/plazas/{id}/town/messages | zone, channel, (before_id / body) | 같은 구역·채널 메시지만 |
+
+실시간: `presence-town.{id}.{zone}.{channel}` (`.message.sent`, whisper `emote`). 주민 광장 API로 부르면 `TOWN_PLAZA`(409)
+
 ## 광장 (메인 화면)
 
 | 메서드 | 경로 | 입력 | 비고 |
 |---|---|---|---|
 | GET | /api/meta/categories | — | 카테고리 |
+| GET | /api/meta/kick-reasons | — | 강퇴 사유 3개 |
 | GET | /api/meta/report-reasons | — | 신고 사유 8개 |
 | GET | /api/plazas | lat, lng, category?, q?, sort?(near/busy/new), page? | `{hot, data[], meta}` — 정렬 탭 3개 |
 | POST | /api/plazas | name, category, description?, capacity?, lat, lng | 만든 사람 자동 입장 |
 | GET | /api/plazas/{id} | lat?, lng? | |
 | POST | /api/plazas/{id}/enter | — | `{channel, heartbeat_interval}` · PLAZA_FULL |
 | POST | /api/plazas/{id}/heartbeat | — | 광장 화면에 있는 동안 30초마다 |
-| POST | /api/plazas/{id}/leave | — | |
+| POST | /api/plazas/{id}/leave | — | 방장이 나가고 3분(`host_grace`) 안에 안 돌아오면 위임 또는 닫힘 |
+| POST | /api/plazas/{id}/kick | user_id, reason(spam/abuse/etc) | 방장만 · **해제 전까지** 재입장·목록 노출 불가(`KICKED`) · 광장당 하루 10명(`KICK_LIMIT`, 해제해도 셈) |
+| GET | /api/plazas/{id}/kicks | — | 강퇴 목록 `[{id, user, reason_label, kicked_at}]` · 지금 방장만 |
+| DELETE | /api/plazas/{id}/kicks/{kickId} | — | 강퇴 해제 · 지금 방장만 · `ALREADY_REVOKED` |
+| POST | /api/plazas/{id}/transfer | user_id | 방장만 · 광장에 있고 자동 위임과 같은 자격(`NOT_ELIGIBLE`) |
+| POST | /api/plazas/{id}/close | — | 방장만 |
 | GET | /api/plazas/{id}/messages | before_id? | 최신 50개, 차단 관계 메시지 제외 |
 | POST | /api/plazas/{id}/messages | body(≤500) | 분당 30개 제한 |
+
+광장 카드에 `host_id` 포함(왕관 표시). 실시간 이벤트: `.plaza.host_changed {host}` · `.plaza.member_kicked {user_id}` · `.plaza.closed {reason: host_left/host_closed/admin}`
+
+방장 부재(3분): 접속자 중 정상 계정·매너점수 ≥ `min_score_to_host`·운영 광장 3개 미만인 사람 중 점수 최고에게 위임 → `.plaza.host_changed {host}`. 없으면 닫힘 → `.plaza.closed`, 이후 enter·heartbeat·메시지·번개 생성은 410 `PLAZA_CLOSED`. 방장 없고 접속자 0명인 방은 목록에서 즉시 숨김
 
 광장 카드 필드: `name, category_label, distance_label("500m 이내"), live_count, is_live, preview_avatars[], last_message(10분 내 말풍선), capacity`
 
@@ -143,6 +167,8 @@
 - 처리 로직: `ModerationService` — 신고 승인(none/warn/suspend/ban)·반려, 정지·해제, 영구정지(CI 차단 명단 등록)
   - 신고 승인 시 매너점수 -50, 반려 시 시스템 자동 정지였다면 기준 미달 시 자동 해제
 - `meetups:settle` 매시간: 채팅방이 닫힌 번개의 참석자 attend_count +1, 매너점수 +5 (최대 1000), 한 번만
+- `plazas:purge` 매일 04:00(KST): 닫힌 지 30일 지난 광장 대화 삭제(신고된 메시지 제외), 해제한 지 7일 지난 강퇴 기록·닫힌 지 30일 지난 광장의 강퇴 기록 삭제
+- `plazas:close-abandoned` 1분마다: 방장이 3분 넘게 없는 광장을 위임하거나 닫음 (손님 요청 때도 즉시 처리)
 
 ## 앱 (Vue 모바일 웹)
 

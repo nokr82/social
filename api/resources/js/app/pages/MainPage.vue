@@ -1,6 +1,8 @@
 <script setup>
 /**
- * 메인 — 광장 미리보기형 (디자인: MainGrid.dc.html, C안 채택)
+ * 메인 — 상시 광장 + 주민 광장 (디자인: MainGrid.dc.html)
+ * - 최상단 크게: 우리 동네 상시 광장 → GET /town (접속자·풍경 미리보기·말풍선·여기 있는 친구)
+ * - 아래: 주민이 만든 광장 타일
  * - 정렬 탭: 가까운 순 / 북적이는 순 / 새로 생긴  → GET /plazas?sort=
  * - 타일: 광장 안 접속자 아바타 + 방금 한 말(말풍선) + 접속자 수
  * - 접속자 수가 계속 바뀌므로 20초마다 새로고침
@@ -24,6 +26,13 @@ const SORTS = [
     { key: 'busy', label: '북적이는 순' },
     { key: 'new', label: '새로 생긴' },
 ];
+// 상시 광장 카드 풍경의 아바타 자리 9개 (디자인 시안 배치 그대로)
+const TOWN_SLOTS = [
+    { x: 24, y: 70 }, { x: 62, y: 50 }, { x: 98, y: 86 }, { x: 132, y: 56 }, { x: 170, y: 92 },
+    { x: 206, y: 62 }, { x: 244, y: 88 }, { x: 280, y: 58 }, { x: 300, y: 104 },
+];
+const TOWN_BUBBLES = [{ x: 52, y: 22 }, { x: 196, y: 30 }]; // 최근 말풍선 2개 자리
+
 // 타일 안 아바타 자리 (디자인 시안의 배치를 그대로) — 접속자 순서대로 채운다
 const SLOTS = [
     { x: 30, y: 52 }, { x: 64, y: 40 }, { x: 96, y: 60 }, { x: 56, y: 76 },
@@ -34,6 +43,7 @@ const plazas = ref([]);
 const loading = ref(true);
 const location = ref({ label: '' });
 const creating = ref(false);
+const town = ref(null);               // 우리 동네 상시 광장 (동네를 못 찾으면 null → 카드 숨김)
 let timer = null;
 
 const tiles = computed(() => plazas.value.map((p, i) => ({
@@ -45,13 +55,25 @@ const tiles = computed(() => plazas.value.map((p, i) => ({
     meta: [p.category_label, p.distance_label].filter(Boolean).join(' · '),
 })));
 
+const townAvatars = computed(() => (town.value?.preview_avatars ?? [])
+    .slice(0, TOWN_SLOTS.length).map((parts, i) => ({ parts, ...TOWN_SLOTS[i] })));
+const townBubbles = computed(() => (town.value?.bubbles ?? [])
+    .slice(0, TOWN_BUBBLES.length).map((text, i) => ({ text, ...TOWN_BUBBLES[i] })));
+
 async function load({ silent = false } = {}) {
     if (!silent) loading.value = true;
     try {
         const loc = await getLocation();
         location.value = loc;
-        const res = await get(`/plazas?lat=${loc.lat}&lng=${loc.lng}&sort=${sort.value}`);
+        // 상시 광장 카드와 주민 광장 목록을 함께 (카드 실패는 목록에 영향 없게 따로 처리)
+        const [res, mine] = await Promise.all([
+            get(`/plazas?lat=${loc.lat}&lng=${loc.lng}&sort=${sort.value}`),
+            get(`/town?lat=${loc.lat}&lng=${loc.lng}`).catch(() => ({ data: town.value })),
+        ]);
         plazas.value = res.data;
+        town.value = mine.data;
+        // 위치 이름: 동네 이름(역삼동)을 알면 그걸로
+        if (mine.data?.region_name) location.value = { ...loc, label: mine.data.region_name };
     } catch (e) {
         if (!silent) showToast(e instanceof ApiError ? e.message : '광장 목록을 불러오지 못했어요');
     } finally {
@@ -63,6 +85,10 @@ async function loadMe() {
     if (!auth.me) {
         try { auth.me = (await get('/me')).data; } catch { /* 401이면 api.js가 처리 */ }
     }
+}
+
+function openTown() {
+    if (town.value) router.push({ name: 'town', params: { id: town.value.id } });
 }
 
 function openPlaza(id) {
@@ -104,7 +130,50 @@ onBeforeUnmount(() => clearInterval(timer));
         </div>
 
         <div class="body scroll">
-            <h1 class="title" style="font-size: 28px; margin-top: 4px">오늘은 어느 광장에<br>놀러갈까?</h1>
+            <!-- ===== 우리 동네 상시 광장 (메인 최상단, 크게) ===== -->
+            <div v-if="loading && !town" class="town skeleton" aria-busy="true" />
+            <button v-else-if="town" type="button" class="town" :aria-label="`${town.name} 입장하기, ${town.live_count}명 접속중`" @click="openTown">
+                <span class="town-top">
+                    <span class="town-badge">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+                        우리 동네 상시 광장
+                    </span>
+                    <span class="town-live"><i />{{ town.live_count }}명 접속중</span>
+                </span>
+                <span class="town-head">
+                    <span class="title town-name">{{ town.name }}</span>
+                    <span class="town-desc">{{ town.description }}</span>
+                </span>
+
+                <!-- 광장 풍경 미리보기 -->
+                <span class="town-stage" aria-hidden="true">
+                    <span class="ts-ground" />
+                    <span class="ts-pad" />
+                    <span class="ts-tree t1" />
+                    <span class="ts-tree t2" />
+                    <span v-for="(a, i) in townAvatars" :key="i" class="ts-av" :style="{ left: `${a.x}px`, top: `${a.y}px` }">
+                        <AvatarFace :parts="a.parts" :size="32" />
+                    </span>
+                    <span v-for="(b, i) in townBubbles" :key="`b${i}`" class="ts-bubble" :style="{ left: `${b.x}px`, top: `${b.y}px` }">{{ b.text }}</span>
+                </span>
+
+                <span class="town-foot">
+                    <span v-if="town.friends.count" class="town-friends">
+                        <span class="tf-avs">
+                            <span v-for="(f, i) in town.friends.avatars.slice(0, 2)" :key="i" class="tf-av"><AvatarFace :parts="f" :size="22" variant="mini" /></span>
+                        </span>
+                        <span><b>친구 {{ town.friends.count }}명</b>이 여기 있어요</span>
+                    </span>
+                    <span v-else class="town-friends">{{ town.live_count ? '지금 동네 사람들이 모여 있어요' : '첫 번째로 들어가 볼까요?' }}</span>
+                    <span class="town-enter">입장하기</span>
+                </span>
+            </button>
+
+            <!-- 주민이 만든 광장 -->
+            <div class="section-head">
+                <h2>주민이 만든 광장</h2>
+                <span>관심사별 모임</span>
+            </div>
 
             <!-- 정렬 탭 -->
             <div class="tabs" role="tablist" aria-label="정렬">
@@ -160,6 +229,35 @@ onBeforeUnmount(() => clearInterval(timer));
 .me { width: 44px; height: 44px; border-radius: 22px; border: 2px solid #fff; background: #E6E1FF; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 8px rgba(31,27,58,.12); }
 
 .body { flex: 1; min-height: 0; padding: 0 20px 120px; display: flex; flex-direction: column; gap: 16px; }
+
+.body > .town { margin-top: 4px; }
+.town { text-align: left; border: none; width: 100%; background: var(--c-primary); border-radius: 28px; padding: 16px; display: flex; flex-direction: column; gap: 12px; color: #fff; box-shadow: 0 8px 24px rgba(108,92,231,.30); }
+.town.skeleton { height: 312px; background: linear-gradient(90deg, #8E80F0 0%, #A79CF5 50%, #8E80F0 100%); background-size: 200% 100%; animation: shimmer 1.2s infinite; box-shadow: none; }
+.town-top { display: flex; justify-content: space-between; align-items: center; }
+.town-badge { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,.18); border-radius: 10px; padding: 4px 10px; font-size: 12px; font-weight: 700; }
+.town-live { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; }
+.town-live i { width: 8px; height: 8px; border-radius: 4px; background: #7CF2B0; }
+.town-head { display: flex; flex-direction: column; gap: 2px; }
+.town-name { font-size: 30px; line-height: 1.2; }
+.town-desc { font-size: 13px; color: #E6E1FF; }
+.town-stage { position: relative; display: block; height: 150px; border-radius: 20px; background: #8E80F0; overflow: hidden; }
+.ts-ground { position: absolute; left: 30px; top: 40px; width: 290px; height: 100px; border-radius: 50%; background: rgba(255,255,255,.22); }
+.ts-pad { position: absolute; left: 140px; top: 74px; width: 70px; height: 32px; border-radius: 50%; background: rgba(255,255,255,.30); }
+.ts-tree { position: absolute; border-radius: 50%; background: #A8E6CF; }
+.ts-tree.t1 { left: 10px; top: 8px; width: 34px; height: 34px; }
+.ts-tree.t2 { right: 12px; top: 96px; width: 30px; height: 30px; }
+.ts-av { position: absolute; display: flex; }
+.ts-bubble { position: absolute; max-width: 140px; background: #fff; color: var(--c-ink); border-radius: 10px; padding: 3px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.town-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.town-friends { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+.tf-avs { display: flex; }
+.tf-av { width: 26px; height: 26px; border-radius: 13px; border: 2px solid var(--c-primary); display: flex; align-items: center; justify-content: center; background: var(--c-primary); }
+.tf-av + .tf-av { margin-left: -8px; }
+.town-enter { flex-shrink: 0; background: #fff; color: var(--c-primary-ink); font-size: 15px; font-weight: 700; padding: 11px 18px; border-radius: 16px; }
+
+.section-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
+.section-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.section-head span { font-size: 12px; color: var(--c-muted); }
 
 .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; background: #ECE8FF; padding: 4px; border-radius: 14px; flex-shrink: 0; }
 .tabs button { height: 40px; border: none; border-radius: 11px; background: transparent; color: var(--c-muted); font-size: 14px; font-weight: 500; }

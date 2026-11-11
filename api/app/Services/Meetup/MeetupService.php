@@ -41,6 +41,10 @@ class MeetupService
 
     public function create(User $host, Plaza $plaza, array $data, CarbonInterface $startsAt): Meetup
     {
+        // 닫힌 광장에는 번개를 열 수 없음 (앱 화면을 거치지 않은 직접 호출도 막기)
+        if ($plaza->status !== Plaza::STATUS_OPEN) {
+            throw new DomainException('PLAZA_CLOSED', '닫힌 광장에는 번개를 열 수 없어요', 410);
+        }
         if (($host->trustScore?->score ?? 0) < config('social.trust.min_score_to_host')) {
             throw new DomainException('LOW_TRUST', '매너점수가 낮아 지금은 번개를 열 수 없어요', 403);
         }

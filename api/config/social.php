@@ -20,6 +20,14 @@ return [
         'max_capacity' => 100,
         'max_open_per_host' => 3,        // 한 사람이 동시에 열 수 있는 광장 수
         'presence_ttl' => 60,            // heartbeat 없이 이 초가 지나면 이탈로 간주
+        'host_grace' => 180,             // 방장이 나간 뒤 이 초 안에 안 돌아오면 위임 또는 닫기 (프로필 보기·새로고침 정도는 버팀)
+        'kick_daily_limit' => 10,        // 광장 하나에서 24시간 동안 강퇴할 수 있는 인원 (방장 권한 남용 방지). 강퇴는 방장이 해제할 때까지 유지
+        'kick_reasons' => [
+            'spam' => '도배',
+            'abuse' => '욕설 · 비방',
+            'etc' => '기타',
+        ],
+        'closed_message_days' => 30,     // 닫힌 광장의 대화 보관 기간 (신고된 메시지는 증거로 계속 보관)
         'preview_avatars' => 5,          // 카드에 보여줄 아바타 수
     ],
 
@@ -77,9 +85,25 @@ return [
     ],
 
     // 개발용 가짜 드라이버: local/testing에서만 'fake' 사용
+    // 동네 상시 광장: 법정동마다 1개. 구역(관심사)별·채널(30명)별로 따로 보이고 대화한다
+    'town' => [
+        'channel_capacity' => 30,        // 한 채널 최대 인원. 차면 다음 채널로 자동 배정
+        'max_channels' => 10,            // 구역당 최대 채널 (구역당 300명)
+        'preview_avatars' => 9,          // 메인 카드 풍경에 그릴 아바타 수
+        // 순서 = 상시 광장 지도의 구역 버튼 순서 (디자인 TownPlaza.dc.html)
+        'zones' => [
+            'fountain' => ['name' => '분수대', 'topic' => '아무 얘기'],
+            'bench' => ['name' => '벤치', 'topic' => '조용히 쉬기'],
+            'playground' => ['name' => '놀이터', 'topic' => '게임'],
+            'foodtruck' => ['name' => '푸드트럭', 'topic' => '맛집'],
+            'field' => ['name' => '운동장', 'topic' => '운동'],
+        ],
+    ],
+
     'drivers' => [
         'social' => env('SOCIAL_LOGIN_DRIVER', 'real'),   // real | fake
         'identity' => env('IDENTITY_DRIVER', 'fake'),     // pass | fake (PASS 대행사 계약 전)
         'presence' => env('PRESENCE_DRIVER', 'redis'),    // redis | array
+        'region' => env('REGION_DRIVER', 'fake'),         // kakao | fake (카카오 REST 키 설정 전, 운영에서는 kakao 필수)
     ],
 ];
