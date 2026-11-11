@@ -63,6 +63,20 @@
 
 `/api/me` 응답에 `stats{hearts, friends, received_requests, photos}` 추가 · 차단하면 친구 관계·요청 자동 삭제
 
+## 채팅 탭 · 1:1 대화 (친구끼리만)
+
+| 메서드 | 경로 | 입력 / 비고 |
+|---|---|---|
+| GET | /api/chats | 대화 목록: 상대·마지막 메시지·unread, `unread_total` |
+| GET | /api/friends | 친구 목록: 성별·나이·online·plaza_name(지금 있는 광장)·last_seen_at |
+| POST | /api/dm/{userId} | 친구와의 방 열기(없으면 생성) → `{room_id}` · 친구 아니면 403 NOT_FRIENDS |
+| GET | /api/chats/{room} | 헤더 정보 + met_at(만난 광장) + other_last_read_id('읽음' 표시) |
+| GET/POST | /api/chats/{room}/messages | before_id? / body(≤1000) |
+| POST | /api/chats/{room}/read | last_id — 읽음 위치는 앞으로만 이동 |
+
+실시간: `private-chat.{room}` → `.dm.sent`, `.dm.read` / `private-App.Models.User.{me}` → `.dm.sent` (목록·배지)
+접속 상태: 인증 요청마다 `last_seen_at` 갱신(1분 1회), 5분 내 활동 = 접속 중
+
 ## 안전
 
 | 메서드 | 경로 | 입력 |

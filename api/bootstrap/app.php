@@ -19,7 +19,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // 정지·탈퇴 계정 차단
-        $middleware->alias(['active' => \App\Http\Middleware\EnsureUserIsActive::class]);
+        $middleware->alias([
+            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            'seen' => \App\Http\Middleware\TouchLastSeen::class, // 접속 상태용 마지막 활동 시각
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

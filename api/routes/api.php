@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\PlazaController;
@@ -30,7 +31,7 @@ Route::get('photos/{photo}/file', [PhotoController::class, 'file'])
     ->middleware('signed:relative')->name('photos.file');
 Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'seen'])->group(function () {
     // 정지된 계정도 내 정보 조회·로그아웃은 가능
     Route::get('me', [MeController::class, 'show']);
     Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -66,6 +67,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('friend-requests/{friendRequest}/reject', [FriendRequestController::class, 'reject']);
         Route::post('friend-requests/{friendRequest}/undo', [FriendRequestController::class, 'undo']);
         Route::delete('friend-requests/{friendRequest}', [FriendRequestController::class, 'destroy']);
+
+        // 채팅 탭 · 1:1 대화 (친구끼리만)
+        Route::get('chats', [ChatController::class, 'index']);
+        Route::get('friends', [ChatController::class, 'friends']);
+        Route::post('dm/{user}', [ChatController::class, 'open']);
+        Route::get('chats/{room}', [ChatController::class, 'show']);
+        Route::get('chats/{room}/messages', [ChatController::class, 'messages']);
+        Route::post('chats/{room}/messages', [ChatController::class, 'send'])->middleware('throttle:chat');
+        Route::post('chats/{room}/read', [ChatController::class, 'read']);
 
         Route::get('blocks', [SafetyController::class, 'blocks']);
         Route::post('blocks', [SafetyController::class, 'block']);

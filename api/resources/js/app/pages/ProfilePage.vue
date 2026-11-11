@@ -12,7 +12,8 @@ import FriendRequestSheet from '../components/FriendRequestSheet.vue';
 import HeartIcon from '../components/HeartIcon.vue';
 import LockIcon from '../components/LockIcon.vue';
 import { ApiError, get, post } from '../lib/api';
-import { comingSoon, showToast } from '../lib/toast';
+import { openDm } from '../lib/dm';
+import { showToast } from '../lib/toast';
 
 const props = defineProps({ id: { type: String, required: true } });
 const route = useRoute();
@@ -150,7 +151,7 @@ onMounted(load);
             <button v-if="user.relation === 'none'" class="btn-primary" @click="requesting = true">친구 요청</button>
             <button v-else-if="user.relation === 'sent'" class="waiting" disabled>요청 보냄 · 수락 기다리는 중</button>
             <button v-else-if="user.relation === 'received'" class="btn-primary" @click="router.push({ name: 'friend-requests' })">받은 요청 확인하기</button>
-            <button v-else class="btn-primary" @click="comingSoon('1:1 대화')">대화하기</button>
+            <button v-else class="btn-primary" @click="openDm(router, user.id)">대화하기</button>
         </div>
 
         <FriendRequestSheet v-if="requesting" :user="user" :plaza-id="route.query.from ?? null" @close="requesting = false" @sent="onSent" />

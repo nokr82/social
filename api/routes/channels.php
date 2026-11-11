@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Resources\AvatarSummary;
+use App\Models\ChatRoom;
 use App\Models\Plaza;
 use App\Models\User;
 use App\Services\Plaza\PlazaPresence;
@@ -8,6 +9,18 @@ use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
+});
+
+/*
+| 1:1 대화 채널: chat.{room} — 방 참여자이면서 지금도 친구일 때만
+*/
+Broadcast::channel('chat.{room}', function (User $user, ChatRoom $room) {
+    if ($room->type !== ChatRoom::TYPE_DM || ! in_array($user->id, $room->dmPair(), true)) {
+        return false;
+    }
+    $other = $room->otherMemberId($user->id);
+
+    return $user->isActive() && $user->isFriendWith($other) && ! $user->isBlockedWith($other);
 });
 
 /*

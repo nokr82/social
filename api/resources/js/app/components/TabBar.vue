@@ -1,5 +1,5 @@
 <script setup>
-/** 하단 탭바. 광장·MY는 열림, 번개·채팅은 준비 중 */
+/** 하단 탭바. 광장·채팅·MY는 열림, 번개는 준비 중 */
 import { useRouter } from 'vue-router';
 import { comingSoon } from '../lib/toast';
 
@@ -9,7 +9,7 @@ const router = useRouter();
 const tabs = [
     { key: 'plaza', label: '광장', route: 'main', icon: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z' },
     { key: 'bungae', label: '번개', icon: 'M13 2L4 14h7l-1 8 9-12h-7z' },
-    { key: 'chat', label: '채팅', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' },
+    { key: 'chat', label: '채팅', route: 'chats', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' },
     { key: 'my', label: 'MY', route: 'my' },
 ];
 

@@ -13,6 +13,8 @@ const router = createRouter({
         { path: '/friends/requests', name: 'friend-requests', component: () => import('./pages/FriendRequestsPage.vue') },
         // 상대 프로필: from=광장 id (친구 요청 '어디서 만났는지'에 사용)
         { path: '/users/:id(\\d+)', name: 'profile', component: () => import('./pages/ProfilePage.vue'), props: true },
+        { path: '/chats', name: 'chats', component: () => import('./pages/ChatTabPage.vue') },
+        { path: '/chats/:roomId(\\d+)', name: 'dm', component: () => import('./pages/DmRoomPage.vue'), props: true },
         { path: '/:pathMatch(.*)*', redirect: '/' },
     ],
 });

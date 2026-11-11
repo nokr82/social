@@ -192,7 +192,11 @@ onMounted(() => load().catch((e) => showToast(errMsg(e, '정보를 불러오지 
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                     </span>
                 </button>
-                <button v-for="m in ['친구 목록', '차단 목록', '알림 설정']" :key="m" @click="comingSoon(m)">
+                <button @click="router.push({ name: 'chats', query: { tab: 'friends' } })">
+                    친구 목록
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                </button>
+                <button v-for="m in ['차단 목록', '알림 설정']" :key="m" @click="comingSoon(m)">
                     {{ m }}
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A85A3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                 </button>

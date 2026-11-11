@@ -40,6 +40,20 @@ class ArrayPlazaPresence implements PlazaPresence
         return $out;
     }
 
+    public function whereAre(array $userIds): array
+    {
+        $out = [];
+        foreach ($this->data as $plazaId => $users) {
+            foreach ($userIds as $uid) {
+                if (in_array($uid, $this->members($plazaId, PHP_INT_MAX), true)) {
+                    $out[$uid] = $plazaId;
+                }
+            }
+        }
+
+        return $out;
+    }
+
     public function members(int $plazaId, int $limit): array
     {
         $cutoff = time() - (int) config('social.plaza.presence_ttl');

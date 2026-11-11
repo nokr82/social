@@ -10,7 +10,8 @@ import AvatarFace from '../components/AvatarFace.vue';
 import HeartIcon from '../components/HeartIcon.vue';
 import LockIcon from '../components/LockIcon.vue';
 import { ApiError, del, get, post } from '../lib/api';
-import { comingSoon, showToast } from '../lib/toast';
+import { openDm } from '../lib/dm';
+import { showToast } from '../lib/toast';
 
 const router = useRouter();
 
@@ -144,7 +145,7 @@ onMounted(load);
                             </template>
                             <div class="actions">
                                 <button class="line" @click="router.push({ name: 'profile', params: { id: r.user.id } })">프로필 보기</button>
-                                <button class="solid" @click="comingSoon('1:1 대화')">대화하기</button>
+                                <button class="solid" @click="openDm(router, r.user.id)">대화하기</button>
                             </div>
                         </div>
                     </div>

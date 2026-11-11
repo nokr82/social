@@ -53,5 +53,7 @@ Nov 10, 2026 · 설계서 v0.1 + 메인 디자인(광장 목록) 기준
 | friend_requests | from_id, to_id, status, message, plaza_id, expires_at | 7일 만료는 조회 조건으로 (크론 없음) |
 | friendships | user_id, friend_id (PK 복합), plaza_id | 양방향 2행 |
 
+| chat_room_members | room_id, user_id (PK 복합), last_read_id | DM 참여자·읽음 위치. DM 방은 chat_rooms.ref_id = (작은ID<<32)\|큰ID |
+
 - 사진 파일: `PHOTO_DISK`(개발 local → 운영 r2/s3). 공개 URL 없음, 30분 서명 URL만 발급
 - 업로드 시 EXIF(GPS) 제거: 위치 비공개 원칙 유지

@@ -21,4 +21,7 @@ interface PlazaPresence
 
     /** 최근 접속 순 사용자 ID @return array<int> */
     public function members(int $plazaId, int $limit): array;
+
+    /** 사용자들이 지금 있는 광장 @return array<int, int> userId => plazaId */
+    public function whereAre(array $userIds): array;
 }
