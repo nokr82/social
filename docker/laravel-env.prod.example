@@ -1,0 +1,52 @@
+# 운영 서버의 social/api/.env
+# 서버에 이미 있는 api/.env에 아래 '바꿀 값'만 반영 (전체 교체 X — DB·Redis·Reverb 값은 서버 것 유지)
+APP_NAME=소셜링
+APP_ENV=production
+# APP_KEY: 서버에 이미 있으면 그대로 (바꾸면 로그인 세션·암호화 값이 모두 무효)
+APP_KEY=
+APP_DEBUG=false
+APP_URL=https://social.devhong.shop
+APP_LOCALE=ko
+APP_FALLBACK_LOCALE=ko
+
+LOG_CHANNEL=daily
+LOG_LEVEL=warning
+LOG_DAILY_DAYS=14
+
+# HTTPS 전용 쿠키 (관리자 화면 로그인)
+SESSION_SECURE_COOKIE=true
+
+# 브라우저 → 웹소켓: HTTPS 도메인으로 (프론트 빌드에 들어감 → 바꾸면 deploy.sh --front)
+VITE_REVERB_HOST=social.devhong.shop
+VITE_REVERB_PORT=443
+VITE_REVERB_SCHEME=https
+
+# 사진: Lightsail 버킷(S3 호환, 비공개). 버킷 > 권한 > 액세스 키 만들기
+PHOTO_DISK=s3
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=ap-northeast-2
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+
+# ── 소셜링앱 ──────────────────────────────────────
+# 서버에 이미 있으면 절대 바꾸지 말 것 (바꾸면 기존 가입자 대조·정지 명단이 모두 어긋남). 없을 때만 `openssl rand -hex 32`
+CI_PEPPER=
+SOCIAL_LOGIN_DRIVER=real
+# 비공개 베타: 직접 입력(self). PASS 계약 후 pass
+IDENTITY_DRIVER=self
+PRESENCE_DRIVER=redis
+REGION_DRIVER=kakao
+
+# 카카오 디벨로퍼스 > 내 애플리케이션 > 앱 키 > REST API 키 (로그인·동네 찾기 공용)
+KAKAO_REST_API_KEY=
+KAKAO_CLIENT_SECRET=
+KAKAO_REDIRECT_URI=https://social.devhong.shop/auth/kakao
+
+# 웹 푸시: 개발 서버 키와 별도로 `php artisan webpush:vapid --show`로 생성
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:you@example.com
+
+# 관리자 화면(/admin) 접근 허용 IP (쉼표 구분, 비우면 제한 없음 — 로그인만으로 보호)
+ADMIN_ALLOWED_IPS=

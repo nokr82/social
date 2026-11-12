@@ -1,102 +1,12 @@
-# 소셜링앱 운영 (AWS Lightsail 2GB · 서울)
-#   docker compose -f docker-compose.prod.yml up -d --build
-# 구조: web(Caddy :80/:443, HTTPS 자동) → php(FPM) / reverb(웹소켓)
-#       queue·scheduler는 같은 앱 이미지, mariadb·redis는 내부망 전용(포트 미공개)
-name: social
-
-x-app: &app
-  image: social-app:latest
-  env_file: api/.env              # 서버의 api/.env (docker/prod/laravel-env.example 참고)
-  volumes:
-    - storage:/var/www/storage    # 로그·임시 파일 (사진은 Lightsail 버킷)
-  restart: unless-stopped
-  networks: [social]
-  depends_on:
-    mariadb: { condition: service_healthy }
-    redis: { condition: service_started }
-
+# 운영 서버 전용: docker-compose.yml 위에 덮어씀
+# (서버의 .env에서 COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml 로 합쳐 사용)
 services:
-  # 이미지는 php 서비스에서 한 번만 빌드하고 나머지가 같은 이미지를 씀
-  php:
-    <<: *app
-    build:
-      context: .
-      dockerfile: docker/prod/Dockerfile
-      target: app
-      args:
-        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY}
-        VITE_REVERB_HOST: ${APP_DOMAIN}
-
-  reverb:
-    <<: *app
-    command: php artisan reverb:start --host=0.0.0.0 --port=8080
-
-  queue:
-    <<: *app
-    # 1시간마다 스스로 재시작 → 메모리 누수 방지 (restart 정책이 다시 띄움)
-    command: php artisan queue:work --tries=3 --timeout=90 --max-time=3600
-
-  scheduler:
-    <<: *app
-    command: php artisan schedule:work
-
-  web:
-    build:
-      context: .
-      dockerfile: docker/prod/Dockerfile
-      target: web
-      args:
-        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY}
-        VITE_REVERB_HOST: ${APP_DOMAIN}
-    image: social-web:latest
-    environment:
-      APP_DOMAIN: ${APP_DOMAIN}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"             # HTTP/3
-    volumes:
-      - caddy_data:/data           # 인증서 보관 (지우면 재발급 → 발급 횟수 제한 주의)
-      - caddy_config:/config
-    restart: unless-stopped
-    networks: [social]
-    depends_on: [php, reverb]
-
   mariadb:
-    image: mariadb:11.8
-    # 2GB 서버 기준: 버퍼 풀 256MB, 연결 수 제한
-    command: --innodb-buffer-pool-size=256M --max-connections=80 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MARIADB_DATABASE: ${DB_DATABASE}
-      MARIADB_USER: ${DB_USERNAME}
-      MARIADB_PASSWORD: ${DB_PASSWORD}
-      TZ: Asia/Seoul
+    # 2GB 서버용 메모리 상한
+    command: --innodb-buffer-pool-size=256M --max-connections=50 --performance-schema=OFF
+
+  php:
     volumes:
-      - dbdata:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
-    networks: [social]
-
-  redis:
-    image: redis:7-alpine
-    # 큐 작업이 지워지면 안 되므로 noeviction (가득 차면 오류로 알림), AOF로 재시작해도 유지
-    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --maxmemory 192mb --maxmemory-policy noeviction
-    volumes:
-      - redisdata:/data
-    restart: unless-stopped
-    networks: [social]
-
-networks:
-  social:
-
-volumes:
-  dbdata:
-  redisdata:
-  storage:
-  caddy_data:
-  caddy_config:
+      # 개발용 php.ini(오류 화면 표시) 위에 운영 값을 덮어씀: 오류 숨김·opcache 고정
+      # (deploy.sh가 배포 때마다 PHP-FPM을 USR2로 리로드하므로 opcache가 새 코드로 갱신됨)
+      - ./docker/php/php.prod.ini:/usr/local/etc/php/conf.d/zz-prod.ini:ro

@@ -13,7 +13,11 @@ RUN install-php-extensions \
       zip \
       gd \
       exif \
-      opcache
+      opcache \
+      gmp \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends mariadb-client \
+ && rm -rf /var/lib/apt/lists/*
     # pdo_mysql : MariaDB 접속
     # redis     : phpredis (Laravel REDIS_CLIENT=phpredis)
     # pcntl     : queue:work / reverb 의 정상 종료 신호 처리
@@ -21,6 +25,8 @@ RUN install-php-extensions \
     # intl      : 다국어·날짜 포맷
     # zip       : composer 설치 속도
     # gd, exif  : 프로필·아바타 이미지 처리 (exif: 사진 회전 정보)
+    # gmp       : 웹 푸시 암호화(ECDH) 속도
+    # mariadb-client: DB 백업 명령(social:backup-db)의 mariadb-dump
 
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
