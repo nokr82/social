@@ -44,6 +44,7 @@ class UserProfileController extends Controller
             'private_photos' => $canSeePrivate ? $photos->present($private, $me) : null,
             'gender' => $canSeePrivate ? $user->identity?->gender : null,
             'age' => $canSeePrivate ? $user->identity?->age() : null,
+            'identity_verified' => (bool) $user->identity?->isVerified(), // false면 '인증 전' 표시
         ]]);
     }
 }

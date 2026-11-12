@@ -29,6 +29,12 @@ class UserIdentity extends Model
         return $this->belongsTo(User::class);
     }
 
+    /** 대행사(PASS 등) 인증이면 true, 베타 직접 입력이면 false → 화면에 '인증 전' */
+    public function isVerified(): bool
+    {
+        return ! in_array($this->provider, ['self'], true);
+    }
+
     /** 만 나이 */
     public function age(): int
     {

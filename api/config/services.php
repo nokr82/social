@@ -29,8 +29,12 @@ return [
     ],
 
     // 카카오 로컬 API (좌표 → 동네 이름). 카카오 로그인과 같은 앱의 'REST API 키'
+    // 카카오: 로컬 API(좌표 → 동네) + 카카오 로그인. 같은 앱의 'REST API 키'를 함께 씀
     'kakao' => [
         'rest_key' => env('KAKAO_REST_API_KEY'),
+        'client_secret' => env('KAKAO_CLIENT_SECRET'),   // 카카오 로그인 > 보안 > Client Secret (사용함일 때)
+        // 카카오 콘솔 '리다이렉트 URI'와 정확히 같아야 함
+        'redirect_uri' => env('KAKAO_REDIRECT_URI', rtrim((string) env('APP_URL'), '/').'/auth/kakao'),
     ],
 
     // 애플 로그인: identity_token의 aud(앱 번들 ID) 검증용

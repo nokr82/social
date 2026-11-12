@@ -42,4 +42,12 @@ class AdminPanelTest extends TestCase
         }
         $this->actingAs($admin, 'admin')->get('/admin/users')->assertSee($b->nickname);
     }
+
+    /** ADMIN_ALLOWED_IPS가 있으면 목록 밖 IP에는 관리자 화면 자체가 없는 것처럼 404 */
+    public function test_admin_ip_allowlist(): void
+    {
+        config(['social.admin_allowed_ips' => '10.0.0.1, 10.0.0.2']);
+        $this->get('/admin/login')->assertNotFound();                                   // 테스트 IP 127.0.0.1
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])->get('/admin/login')->assertOk();
+    }
 }

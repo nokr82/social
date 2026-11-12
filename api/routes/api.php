@@ -37,6 +37,7 @@ Route::get('chat-images/{message}/file', [ChatController::class, 'imageFile'])
 Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
 Route::get('meta/kick-reasons', [MetaController::class, 'kickReasons']);
 Route::get('meta/push', [MetaController::class, 'push']);
+Route::get('meta/auth', [MetaController::class, 'auth']);
 
 Route::middleware(['auth:sanctum', 'seen'])->group(function () {
     // 정지된 계정도 내 정보 조회·로그아웃은 가능

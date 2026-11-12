@@ -9,18 +9,24 @@
  *   2 다음        = POST /auth/register (계정 생성 + 토큰)
  *   3 대표사진    = POST /me/photos (필수, 항상 공개)
  *
- * 개발 모드: 소셜 로그인·PASS가 가짜 드라이버라 버튼만 누르면 진행된다.
+ * 모드는 서버 설정(GET /meta/auth)을 따른다
+ *   social  : real → 카카오 로그인 화면으로 이동 후 /auth/kakao?code= 로 돌아옴 | fake → 버튼만 누르면 진행
+ *   identity: self → 성별·생년월일 직접 입력 + 만 19세 확인 (비공개 베타, '인증 전' 표시)
+ *             fake → 개발용 시트 | pass → (대행사 연동 시)
  */
-import { computed, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
-import { ApiError, post, upload } from '../lib/api';
+import { ApiError, get, post, upload } from '../lib/api';
 import { auth } from '../lib/auth';
 import { AVATAR_COLORS, AVATAR_FACES } from '../lib/avatar';
 import { uploadPhoto } from '../lib/image';
 import { showToast } from '../lib/toast';
 
 const router = useRouter();
+const route = useRoute();
+const authMeta = ref({ social: 'fake', identity: 'fake', kakao: {} }); // 서버 설정을 받기 전 기본값
+const KAKAO_STATE_KEY = 'social.kakaoState';
 
 const step = ref(0);
 const busy = ref(false);
@@ -34,6 +40,10 @@ const fileInput = ref(null);
 
 // 개발용 본인인증 입력 시트 (PASS 대행사 연동 전)
 const devSheet = reactive({ open: false, gender: 'F', birth: '1997-05-05' });
+// 베타 직접 입력 (IDENTITY_DRIVER=self)
+const selfForm = reactive({ gender: '', birth: '', adult: false });
+const selfMode = computed(() => authMeta.value.identity === 'self');
+const selfValid = computed(() => selfForm.gender && /^\d{4}-\d{2}-\d{2}$/.test(selfForm.birth) && selfForm.adult);
 
 const bars = computed(() => [1, 2, 3].map((i) => i <= step.value));
 const nicknameValid = computed(() => /^[가-힣a-zA-Z0-9]{2,10}$/.test(nickname.value));
@@ -62,8 +72,37 @@ async function run(fn) {
 
 /** 0 → 1: 소셜 로그인 */
 const start = () => run(async () => {
-    // TODO(운영): 카카오 JS SDK / 애플 로그인으로 받은 토큰으로 교체
-    const res = await post('/auth/social', { provider: 'kakao', token: devSocialToken() });
+    if (authMeta.value.social !== 'fake') return goKakao();
+    await afterSocial(await post('/auth/social', { provider: 'kakao', token: devSocialToken() }));
+});
+
+/**
+ * 카카오 로그인 화면으로 이동.
+ * state: 우리가 보낸 요청에 대한 응답인지 확인하는 일회용 값 (다른 사이트가 꾸며 보낸 code 차단)
+ */
+function goKakao() {
+    const { client_id: clientId, redirect_uri: redirectUri } = authMeta.value.kakao ?? {};
+    if (!clientId) return showToast('카카오 로그인 설정이 아직 안 됐어요');
+    const state = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+    sessionStorage.setItem(KAKAO_STATE_KEY, state);
+    const q = new URLSearchParams({ response_type: 'code', client_id: clientId, redirect_uri: redirectUri, state });
+    window.location.href = `https://kauth.kakao.com/oauth/authorize?${q}`;
+}
+
+/** 카카오에서 돌아온 경우 (/auth/kakao?code=...&state=...) */
+async function handleKakaoReturn() {
+    const { code, state, error } = route.query;
+    // 주소창에서 code 제거 (새로고침·공유로 재사용되지 않게). 같은 화면이 다시 그려지지 않도록 라우터 대신 history만 교체
+    window.history.replaceState(window.history.state, '', '/onboarding');
+    const expected = sessionStorage.getItem(KAKAO_STATE_KEY);
+    sessionStorage.removeItem(KAKAO_STATE_KEY);
+    if (error) return showToast('카카오 로그인을 취소했어요');
+    if (!code || !state || state !== expected) return showToast('로그인 요청이 올바르지 않아요. 다시 시도해 주세요');
+    await run(async () => afterSocial(await post('/auth/social', { provider: 'kakao', token: code })));
+}
+
+/** 소셜 로그인 결과: 기존 회원 → 메인, 신규 → 본인인증 단계 */
+async function afterSocial(res) {
     if (res.status === 'login') {
         auth.setToken(res.token);
         auth.me = res.user;
@@ -71,6 +110,24 @@ const start = () => run(async () => {
     }
     signupToken.value = res.signup_token;
     step.value = 1;
+}
+
+/** 1(베타): 직접 입력 */
+const verifySelf = () => run(async () => {
+    const res = await post('/auth/identity', {
+        signup_token: signupToken.value,
+        gender: selfForm.gender,
+        birth_date: selfForm.birth,
+        adult: selfForm.adult,
+    });
+    identity.value = { gender: res.gender, age: res.age };
+});
+
+onMounted(async () => {
+    try {
+        authMeta.value = await get('/meta/auth');
+    } catch { /* 기본값(개발 모드)으로 진행 */ }
+    if (route.name === 'kakao-callback') await handleKakaoReturn();
 });
 
 /** 1: 본인인증 (개발용 시트에서 성별·생년월일 입력) */
@@ -152,18 +209,40 @@ function back() {
                 <h1 class="title" style="font-size: 32px">우리 동네 광장에서<br>만나요</h1>
                 <p class="lead">근처 사람들과 아바타로 어울리고,<br>마음 맞으면 친구가 돼요</p>
             </div>
-            <button class="btn-primary" :disabled="busy" @click="start">본인인증으로 시작하기</button>
+            <button class="btn-primary" :class="{ kakao: authMeta.social !== 'fake' }" :disabled="busy" @click="start">
+                {{ authMeta.social !== 'fake' ? '카카오로 시작하기' : '본인인증으로 시작하기' }}
+            </button>
             <p class="foot">만 19세 이상만 가입할 수 있어요</p>
         </section>
 
         <!-- 1. 본인인증 -->
         <section v-else-if="step === 1" class="pane">
             <div class="head">
-                <h1 class="title h">본인인증을 해주세요</h1>
-                <p class="lead">성별과 나이는 인증 정보로 자동 입력되고<br>친구가 된 사람에게만 보여요</p>
+                <h1 class="title h">{{ selfMode ? '성별과 나이를 알려주세요' : '본인인증을 해주세요' }}</h1>
+                <p class="lead">{{ selfMode ? '베타 기간에는 본인인증 대신 직접 입력해요.' : '성별과 나이는 인증 정보로 자동 입력되고' }}<br>친구가 된 사람에게만 보여요</p>
             </div>
 
-            <button v-if="!identity" class="verify-btn" @click="devSheet.open = true">
+            <!-- 베타: 직접 입력 -->
+            <form v-if="selfMode && !identity" class="self-form" @submit.prevent="verifySelf">
+                <div class="field">
+                    <span class="label">성별</span>
+                    <div class="row">
+                        <button type="button" class="chip" :class="{ on: selfForm.gender === 'F' }" :aria-pressed="selfForm.gender === 'F'" @click="selfForm.gender = 'F'">여</button>
+                        <button type="button" class="chip" :class="{ on: selfForm.gender === 'M' }" :aria-pressed="selfForm.gender === 'M'" @click="selfForm.gender = 'M'">남</button>
+                    </div>
+                </div>
+                <label class="field">
+                    <span class="label">생년월일</span>
+                    <input v-model="selfForm.birth" class="input" type="date" max="2010-12-31" required>
+                </label>
+                <label class="adult">
+                    <input v-model="selfForm.adult" type="checkbox">
+                    <span>만 19세 이상이며, 사실과 다르게 입력하면 이용이 제한될 수 있음을 확인해요</span>
+                </label>
+                <button class="btn-primary" type="submit" :disabled="!selfValid || busy">확인</button>
+            </form>
+
+            <button v-else-if="!identity" class="verify-btn" @click="devSheet.open = true">
                 <span class="verify-ic">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M11 18h2" /></svg>
                 </span>
@@ -177,7 +256,7 @@ function back() {
             <div v-else class="verified">
                 <span class="ok">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E7A4C" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
-                    인증 완료
+                    {{ selfMode ? '입력 완료 · 프로필에 인증 전으로 표시돼요' : '인증 완료' }}
                 </span>
                 <div class="facts">
                     <div><small>성별</small><b>{{ identity.gender === 'F' ? '여' : '남' }}</b></div>
@@ -190,7 +269,7 @@ function back() {
             </div>
 
             <div class="grow" />
-            <div class="note">만 19세 미만은 가입할 수 없어요. 인증 정보는 성별·나이 확인과 1인 1계정 확인에만 써요.</div>
+            <div class="note">만 19세 미만은 가입할 수 없어요. {{ selfMode ? '정식 출시 때 휴대폰 본인인증으로 다시 확인해요.' : '인증 정보는 성별·나이 확인과 1인 1계정 확인에만 써요.' }}</div>
             <button class="btn-primary" :disabled="!identity" @click="step = 2">다음</button>
         </section>
 
@@ -327,6 +406,10 @@ function back() {
 .facts small { font-size: 12px; color: var(--c-muted); }
 .facts b { font-size: 16px; }
 .lock { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--c-muted); }
+.self-form { display: flex; flex-direction: column; gap: 16px; }
+.adult { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--c-ink-2); background: var(--c-surface); border-radius: 14px; padding: 12px 14px; }
+.adult input { width: 20px; height: 20px; margin: 0; flex-shrink: 0; accent-color: var(--c-primary); }
+.btn-primary.kakao { background: #FEE500; color: #191919; } /* 카카오 로그인 버튼 가이드 색 */
 .note { font-size: 12px; color: var(--c-muted); line-height: 1.6; background: var(--c-surface); border-radius: 14px; padding: 12px 14px; }
 
 .preview { align-self: center; width: 160px; height: 160px; border-radius: 80px; background: #E9E4FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }

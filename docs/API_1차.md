@@ -6,8 +6,10 @@
 
 | 메서드 | 경로 | 입력 | 응답 |
 |---|---|---|---|
-| POST | /api/auth/social | provider(kakao/apple), token | 기존: `{status:"login", token, user}` / 신규: `{status:"signup", signup_token}` |
+| POST | /api/auth/social | provider(kakao/apple), token (카카오 = 인가 code) | 기존: `{status:"login", token, user}` / 신규: `{status:"signup", signup_token}` |
 | POST | /api/auth/identity | signup_token, transaction_id | `{status, gender, age}` · UNDER_AGE, BANNED, ALREADY_REGISTERED |
+| POST | /api/auth/identity (IDENTITY_DRIVER=self) | signup_token, gender(M/F), birth_date(Y-m-d), adult(true) | 베타 직접 입력, `verified:false` → 프로필 `identity_verified:false`('인증 전') |
+| GET | /api/meta/auth | — | `{social, identity, kakao{client_id, redirect_uri}}` 가입 화면 구성용 |
 | POST | /api/auth/register | signup_token, nickname(한글·영문·숫자 2~10), avatar?{color, face} | `{token, user}` |
 | POST | /api/auth/logout | — | 현재 기기 토큰 폐기 |
 

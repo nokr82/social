@@ -34,7 +34,8 @@ const mtState = computed(() => {
 
 <template>
     <!-- 사진 -->
-    <template v-if="message.type === 'image'">
+    <span v-if="message.type === 'image' && !message.image?.url" class="gone">보관 기간이 지난 사진이에요</span>
+    <template v-else-if="message.type === 'image'">
         <button class="img" :style="imgBox" aria-label="사진 크게 보기" @click="viewing = true">
             <img v-if="message.image?.url" :src="message.image.url" alt="보낸 사진" loading="lazy">
         </button>
@@ -68,6 +69,7 @@ const mtState = computed(() => {
 </template>
 
 <style scoped>
+.gone { font-size: 13px; color: var(--c-muted); background: var(--c-surface); border: 1px dashed var(--c-line); border-radius: 14px; padding: 10px 14px; }
 .img { padding: 0; border: none; border-radius: 16px; overflow: hidden; background: var(--c-primary-soft); display: block; }
 .img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .viewer { position: fixed; inset: 0; z-index: 100; background: rgba(15,12,30,.92); display: flex; align-items: center; justify-content: center; }

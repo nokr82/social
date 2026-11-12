@@ -43,6 +43,7 @@ docker compose exec php php artisan migrate
 ```
 
 자세한 설치 방법(호스트 Nginx 연결, hosts 설정 등)은 [SETUP.md](SETUP.md)를 참고하세요.
+운영 서버(Lightsail) 배포는 [DEPLOY.md](DEPLOY.md)를 참고하세요.
 
 ## 자주 쓰는 명령
 

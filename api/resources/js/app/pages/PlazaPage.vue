@@ -576,7 +576,7 @@ onBeforeUnmount(leave);
                 </span>
                 <span class="bcol">
                     <b>번개 · {{ meetupWhen(meetup.starts_at) }} {{ meetup.area_label }}</b>
-                    <small>{{ meetup.joined_count }}/{{ meetup.capacity }}명 참여 · 본인인증 회원만 참여 가능</small>
+                    <small>{{ meetup.joined_count }}/{{ meetup.capacity }}명 참여 · 만 19세 이상 회원만</small>
                 </span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
             </button>

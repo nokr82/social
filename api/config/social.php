@@ -100,9 +100,15 @@ return [
         ],
     ],
 
+    // 관리자 화면 접근 허용 IP (쉼표 구분, 비우면 제한 없음)
+    'admin_allowed_ips' => env('ADMIN_ALLOWED_IPS', ''),
+
     'drivers' => [
         'social' => env('SOCIAL_LOGIN_DRIVER', 'real'),   // real | fake
-        'identity' => env('IDENTITY_DRIVER', 'fake'),     // pass | fake (PASS 대행사 계약 전)
+        // pass  : PASS 대행사 (계약 후)
+        // self  : 비공개 베타용 직접 입력 (성별·출생연도 + 만 19세 확인). '인증 전'으로 표시, 정지는 카카오 계정 단위
+        // fake  : 개발·테스트용 (운영 부팅 차단)
+        'identity' => env('IDENTITY_DRIVER', 'fake'),
         'presence' => env('PRESENCE_DRIVER', 'redis'),    // redis | array
         'region' => env('REGION_DRIVER', 'fake'),         // kakao | fake (카카오 REST 키 설정 전, 운영에서는 kakao 필수)
     ],

@@ -112,4 +112,23 @@ class ChatAttachmentTest extends TestCase
         $this->assertContains($this->upload($outsider, "/api/meetups/{$id}/images")->status(), [403, 404]);
         $this->assertCount(1, Storage::disk(config('social.photos.disk'))->allFiles());
     }
+
+    /** 닫힌 지 30일 지난 번개방 사진은 파일만 지우고 '보관 기간 지남'으로 */
+    public function test_purge_old_meetup_images(): void
+    {
+        [$host, $guest] = User::factory()->count(2)->complete()->create();
+        $id = $this->meetup($host);
+        $this->actingAs($guest)->postJson("/api/meetups/{$id}/join")->assertOk();
+        $msgId = $this->upload($guest, "/api/meetups/{$id}/images")->assertCreated()->json('data.id');
+        $disk = Storage::disk(config('social.photos.disk'));
+        $this->assertCount(1, $disk->allFiles());
+
+        $this->artisan('meetups:purge-images')->assertSuccessful();
+        $this->assertCount(1, $disk->allFiles()); // 아직 기간 안 지남
+
+        $this->travelTo(now()->addHours(3 + 24)->addDays(31));
+        $this->artisan('meetups:purge-images')->assertSuccessful();
+        $this->assertCount(0, $disk->allFiles());
+        $this->assertSame(['expired' => true], \App\Models\ChatMessage::find($msgId)->meta);
+    }
 }

@@ -1,5 +1,5 @@
 /**
- * 채팅 사진 보내기 공통: 브라우저에서 1600px로 줄인 뒤 업로드
+ * 채팅 사진 보내기 공통: 브라우저에서 1280px(서버 기준)로 줄인 뒤 업로드
  * @param {string} path  '/chats/{room}/images' | '/meetups/{id}/images'
  */
 import { upload } from './api';

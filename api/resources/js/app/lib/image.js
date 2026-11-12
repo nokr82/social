@@ -1,10 +1,10 @@
 /**
  * 업로드 전 사진 줄이기 (브라우저에서).
- * - 폰 원본(5~15MB)을 긴 변 1600px JPEG로 → 업로드 시간 단축, 서버 10MB 제한 회피
+ * - 폰 원본(5~15MB)을 긴 변 1280px JPEG로 → 업로드 시간 단축, 서버 10MB 제한 회피
  * - 캔버스로 다시 그리므로 EXIF(위치 정보)도 여기서 1차로 떨어짐 (서버에서 한 번 더 제거)
  * - createImageBitmap은 EXIF 회전을 반영해 그려줌 (세로 사진이 눕지 않음)
  */
-const MAX_SIDE = 1600;
+const MAX_SIDE = 1280; // 서버 ImageProcessor::MAX_SIDE와 같게 (두 번 줄이지 않도록)
 
 export async function shrinkImage(file) {
     if (!file.type.startsWith('image/')) throw new Error('이미지 파일만 올릴 수 있어요');

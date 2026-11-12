@@ -1,0 +1,13 @@
+# 운영 서버의 social/.env (docker-compose.prod.yml 변수)
+#   cp docker/prod/compose-vars.example .env
+APP_DOMAIN=social.devhong.shop
+
+# api/.env의 REVERB_APP_KEY와 같은 값 (프런트 빌드에 들어감)
+REVERB_APP_KEY=
+
+# 아래 비밀번호는 모두 `openssl rand -hex 24`로 새로 만들기 (개발용 값 재사용 금지)
+DB_ROOT_PASSWORD=
+DB_DATABASE=social
+DB_USERNAME=social
+DB_PASSWORD=
+REDIS_PASSWORD=

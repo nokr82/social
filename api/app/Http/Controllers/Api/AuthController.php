@@ -59,6 +59,11 @@ class AuthController extends Controller
     /** POST /api/auth/identity  {signup_token, transaction_id} — PASS 인증 결과 연결 */
     public function identity(Request $request, IdentityVerifier $verifier): JsonResponse
     {
+        // 비공개 베타: 대행사 없이 직접 입력 (IDENTITY_DRIVER=self)
+        if (config('social.drivers.identity') === 'self') {
+            return $this->selfDeclared($request);
+        }
+
         $data = $request->validate([
             'signup_token' => ['required', 'string'],
             'transaction_id' => ['required', 'string', 'max:200'],
@@ -75,6 +80,27 @@ class AuthController extends Controller
             'gender' => $result->gender,
             'age' => $result->birthDate->age,
         ]);
+    }
+
+    /**
+     * 직접 입력 본인인증  {signup_token, gender: M|F, birth_date: YYYY-MM-DD, adult: true}
+     * 나이 제한(만 19세)은 attachIdentity에서 PASS와 똑같이 검사한다.
+     */
+    private function selfDeclared(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'signup_token' => ['required', 'string'],
+            'gender' => ['required', Rule::in(['M', 'F'])],
+            'birth_date' => ['required', 'date_format:Y-m-d', 'after:1920-01-01', 'before:today'],
+            'adult' => ['accepted'], // '만 19세 이상입니다' 체크 (허위 입력 책임 고지)
+        ], [
+            'adult.accepted' => '만 19세 이상인지 확인해 주세요',
+        ]);
+
+        $birth = \Carbon\CarbonImmutable::createFromFormat('Y-m-d', $data['birth_date'])->startOfDay();
+        $this->signup->attachSelfDeclared($data['signup_token'], $data['gender'], $birth);
+
+        return response()->json(['status' => 'verified', 'gender' => $data['gender'], 'age' => $birth->age, 'verified' => false]);
     }
 
     /** POST /api/auth/register  {signup_token, nickname} — 계정 생성 + 토큰 발급 */

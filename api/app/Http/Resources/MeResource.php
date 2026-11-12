@@ -20,6 +20,7 @@ class MeResource extends JsonResource
             'suspended_until' => $this->suspended_until?->toIso8601String(),
             'gender' => $this->identity?->gender,
             'age' => $this->identity?->age(),
+            'identity_verified' => (bool) $this->identity?->isVerified(),
             'bio' => $this->profile?->bio,
             'interests' => $this->profile?->interests ?? [],
             'avatar' => $this->avatar?->parts,

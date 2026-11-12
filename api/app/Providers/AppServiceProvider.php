@@ -40,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // 안전장치: 운영환경에서 가짜 로그인·가짜 본인인증이 켜져 있으면 부팅 자체를 막는다
+        // (self = 베타 직접 입력은 허용: '인증 전'으로 표시되고 실제 사용자 입력을 받음)
         if ($this->app->isProduction()
             && (config('social.drivers.social') === 'fake' || config('social.drivers.identity') === 'fake')) {
             throw new RuntimeException('운영환경에서 fake 로그인/본인인증 드라이버를 사용할 수 없습니다.');

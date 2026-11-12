@@ -42,4 +42,20 @@ class MetaController extends Controller
     {
         return response()->json(['public_key' => config('webpush.vapid.public_key')]);
     }
+
+    /**
+     * GET /api/meta/auth — 가입 화면 구성용
+     * social: real | fake, identity: pass | self | fake, kakao: 로그인 화면으로 보낼 때 필요한 공개 값
+     */
+    public function auth(): JsonResponse
+    {
+        return response()->json([
+            'social' => config('social.drivers.social'),
+            'identity' => config('social.drivers.identity'),
+            'kakao' => [
+                'client_id' => config('services.kakao.rest_key'),       // 카카오 로그인 URL에 그대로 노출되는 값 (비밀 아님)
+                'redirect_uri' => config('services.kakao.redirect_uri'),
+            ],
+        ]);
+    }
 }

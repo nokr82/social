@@ -1,0 +1,14 @@
+# 운영 이미지 빌드에서 제외 (용량·보안)
+.git
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.production.example
+api/node_modules
+api/vendor
+api/storage
+api/public/build
+api/public/hot
+api/tests
+docs
+*.md

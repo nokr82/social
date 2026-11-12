@@ -42,6 +42,7 @@ class AdminPanelProvider extends PanelProvider
                 AccountWidget::class,
             ])
             ->middleware([
+                \App\Http\Middleware\RestrictAdminIp::class, // ADMIN_ALLOWED_IPS 밖이면 404
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,

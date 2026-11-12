@@ -19,3 +19,9 @@ Schedule::command('plazas:purge')->dailyAt('04:00')->timezone('Asia/Seoul')->wit
 
 // 번개 1시간 전 알림: 5분마다
 Schedule::command('meetups:remind')->everyFiveMinutes()->withoutOverlapping();
+
+// 닫힌 지 30일 지난 번개방 사진 파일 삭제: 매일 새벽 4시 30분(한국 시간)
+Schedule::command('meetups:purge-images')->dailyAt('04:30')->timezone('Asia/Seoul')->withoutOverlapping();
+
+// DB 백업 → 버킷(backups/db), 14일 보관: 매일 새벽 3시 30분(한국 시간)
+Schedule::command('social:backup-db')->dailyAt('03:30')->timezone('Asia/Seoul')->withoutOverlapping()->environments(['production']);

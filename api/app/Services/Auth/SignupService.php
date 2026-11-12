@@ -8,6 +8,7 @@ use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\UserIdentity;
 use App\Services\Identity\IdentityResult;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -62,6 +63,19 @@ class SignupService
             'provider' => $identity->provider,
         ];
         Cache::put(self::KEY.$token, $state, config('social.signup.token_ttl'));
+    }
+
+    /**
+     * 2단계(베타): 직접 입력. 진짜 CI가 없으므로 '카카오 계정'을 CI 자리에 넣는다.
+     * → 같은 카카오 계정 = 같은 사람으로 취급: 영구정지·중복가입 검사가 카카오 계정 단위로 동작
+     *   (다른 카카오 계정으로 오면 막지 못함 → 비공개 베타에서만 사용)
+     */
+    public function attachSelfDeclared(string $token, string $gender, CarbonImmutable $birthDate): void
+    {
+        $state = $this->state($token);
+        $ci = "self:{$state['provider']}:{$state['providerUserId']}";
+
+        $this->attachIdentity($token, new IdentityResult($ci, $gender, $birthDate, 'self'));
     }
 
     /** 3단계: 계정 생성 */

@@ -83,6 +83,8 @@ onMounted(load);
             <div class="basic">
                 <span class="face"><AvatarFace :parts="user.avatar" :size="84" /></span>
                 <h1 class="title" style="font-size: 24px">{{ user.nickname }}</h1>
+                <!-- 베타 직접 입력 가입자: 성별·나이를 본인이 입력함 (통신사 인증 아님) -->
+                <span v-if="user.identity_verified === false" class="unverified" title="본인이 직접 입력한 정보예요">인증 전</span>
                 <span class="hearts">
                     <HeartIcon :size="16" />{{ totalHearts }}
                     <span>· 사진 하트 합계</span>
@@ -166,6 +168,7 @@ onMounted(load);
 
 .basic { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
 .face { width: 96px; height: 96px; border-radius: 48px; background: var(--c-surface); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(108,92,231,.14); }
+.unverified { display: inline-block; font-size: 11px; font-weight: 700; color: var(--c-muted); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: 8px; padding: 2px 8px; }
 .hearts { display: inline-flex; align-items: center; gap: 5px; background: var(--c-surface); border-radius: 14px; padding: 5px 12px; font-size: 14px; font-weight: 700; color: #D63E5C; }
 .hearts span { font-weight: 500; color: var(--c-muted); }
 .bio { margin: 2px 0 0; font-size: 14px; color: var(--c-ink-2); }

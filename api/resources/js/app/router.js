@@ -6,6 +6,8 @@ const router = createRouter({
     routes: [
         { path: '/', name: 'main', component: () => import('./pages/MainPage.vue') },
         { path: '/onboarding', name: 'onboarding', component: () => import('./pages/OnboardingPage.vue'), meta: { public: true } },
+        // 카카오 로그인 후 돌아오는 주소 (카카오 콘솔의 리다이렉트 URI와 같아야 함)
+        { path: '/auth/kakao', name: 'kakao-callback', component: () => import('./pages/OnboardingPage.vue'), meta: { public: true } },
         { path: '/plaza/:id(\\d+)', name: 'plaza', component: () => import('./pages/PlazaPage.vue'), props: true },
         // 동네 상시 광장 (구역·채널)
         { path: '/town/:id(\\d+)', name: 'town', component: () => import('./pages/TownPage.vue'), props: true },
