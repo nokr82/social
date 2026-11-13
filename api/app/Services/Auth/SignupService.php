@@ -4,6 +4,7 @@ namespace App\Services\Auth;
 
 use App\Exceptions\DomainException;
 use App\Models\BannedIdentity;
+use App\Models\PendingSignup;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Models\UserIdentity;
@@ -18,8 +19,10 @@ use RuntimeException;
  * 가입 흐름 (3단계, 단계 사이 상태는 캐시에 signup_token으로 보관)
  *
  *   1) 소셜 로그인 → 기존 회원이면 바로 토큰 발급, 신규면 signup_token 발급
- *   2) PASS 인증   → 나이·영구정지·중복가입 검사 후 인증 결과를 signup_token에 붙임
- *   3) 닉네임 입력 → 트랜잭션으로 users + 부속 테이블 생성, 토큰 발급
+ *                    (예전에 인증까지 마친 계정이면 그 결과를 토큰에 미리 채워 둠 → 인증 생략)
+ *   2) PASS 인증   → 나이·영구정지·중복가입 검사 후 인증 결과를 signup_token에 붙이고
+ *                    소셜 계정 기준으로 7일 보관(pending_signups) — 중간에 나가도 다시 안 함
+ *   3) 닉네임 입력 → 트랜잭션으로 users + 부속 테이블 생성, 토큰 발급, 보관분 삭제
  *
  * 비유: 놀이공원 입장 — 1) 예매 확인 2) 신분증 검사 3) 팔찌 발급.
  *       신분증 검사를 통과하지 않으면 팔찌(계정)는 만들어지지 않는다.
@@ -28,13 +31,36 @@ class SignupService
 {
     private const KEY = 'signup:';
 
-    /** 1단계: 신규 가입자의 소셜 정보를 담은 진행 토큰 발급 */
+    /** 1단계: 신규 가입자의 소셜 정보를 담은 진행 토큰 발급 (이전에 인증을 마쳤으면 그 결과도 담음) */
     public function start(string $provider, string $providerUserId): string
     {
+        $state = compact('provider', 'providerUserId');
+
+        $pending = PendingSignup::alive()->where(compact('provider') + ['provider_user_id' => $providerUserId])->first();
+        // 그 사이 영구정지됐으면 보관분을 쓰지 않음 → 인증 단계에서 BANNED로 걸림
+        if ($pending && ! BannedIdentity::whereKey($pending->identity['ci_hash'] ?? '')->exists()) {
+            $state['identity'] = $pending->identity;
+        }
+
         $token = Str::random(48);
-        Cache::put(self::KEY.$token, compact('provider', 'providerUserId'), config('social.signup.token_ttl'));
+        Cache::put(self::KEY.$token, $state, config('social.signup.token_ttl'));
 
         return $token;
+    }
+
+    /**
+     * 진행 토큰에 이미 붙은 인증 결과 (본인에게 보여줄 성별·나이). 없으면 null
+     * @return array{gender:string, age:int, verified:bool}|null
+     */
+    public function verifiedIdentity(string $token): ?array
+    {
+        $identity = $this->state($token)['identity'] ?? null;
+
+        return $identity ? [
+            'gender' => $identity['gender'],
+            'age' => CarbonImmutable::parse($identity['birth_date'])->age,
+            'verified' => $identity['provider'] !== 'self',
+        ] : null;
     }
 
     /** 2단계: 본인인증 결과 검증 후 진행 토큰에 저장 */
@@ -63,6 +89,12 @@ class SignupService
             'provider' => $identity->provider,
         ];
         Cache::put(self::KEY.$token, $state, config('social.signup.token_ttl'));
+
+        // 소셜 계정 기준으로 보관: 닉네임 단계 전에 나가도 다음엔 인증을 건너뜀
+        PendingSignup::updateOrCreate(
+            ['provider' => $state['provider'], 'provider_user_id' => $state['providerUserId']],
+            ['identity' => $state['identity'], 'expires_at' => now()->addDays(PendingSignup::KEEP_DAYS)],
+        );
     }
 
     /**
@@ -105,6 +137,7 @@ class SignupService
         // 동시 요청으로 같은 CI가 두 번 들어오면 ci_hash UNIQUE 제약이 최종 방어선 역할
 
         Cache::forget(self::KEY.$token);
+        PendingSignup::where('provider', $state['provider'])->where('provider_user_id', $state['providerUserId'])->delete();
 
         return $user;
     }

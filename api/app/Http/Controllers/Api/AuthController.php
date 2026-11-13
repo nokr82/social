@@ -50,9 +50,13 @@ class AuthController extends Controller
             ]);
         }
 
+        $token = $this->signup->start($data['provider'], $providerUserId);
+
         return response()->json([
             'status' => 'signup',
-            'signup_token' => $this->signup->start($data['provider'], $providerUserId),
+            'signup_token' => $token,
+            // 이전에 인증을 마쳤으면 {gender, age, verified} → 앱은 인증 단계를 건너뜀. 아니면 null
+            'identity' => $this->signup->verifiedIdentity($token),
         ]);
     }
 

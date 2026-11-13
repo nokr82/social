@@ -109,6 +109,13 @@ async function afterSocial(res) {
         return router.replace({ name: 'main' });
     }
     signupToken.value = res.signup_token;
+    // 전에 본인인증까지 마치고 나갔던 계정 → 인증 단계를 건너뛰고 닉네임부터
+    if (res.identity) {
+        identity.value = { gender: res.identity.gender, age: res.identity.age };
+        step.value = 2;
+        showToast('본인인증은 이미 완료됐어요. 이어서 가입해요');
+        return;
+    }
     step.value = 1;
 }
 

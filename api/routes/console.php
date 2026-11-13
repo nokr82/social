@@ -25,3 +25,6 @@ Schedule::command('meetups:purge-images')->dailyAt('04:30')->timezone('Asia/Seou
 
 // DB 백업 → 버킷(backups/db), 14일 보관: 매일 새벽 3시 30분(한국 시간)
 Schedule::command('social:backup-db')->dailyAt('03:30')->timezone('Asia/Seoul')->withoutOverlapping()->environments(['production']);
+
+// 만료된 가입 도중 보관분(pending_signups, 7일) 삭제: 매일 새벽 4시(한국 시간)
+Schedule::command('model:prune', ['--model' => [\App\Models\PendingSignup::class]])->dailyAt('04:00')->timezone('Asia/Seoul');
