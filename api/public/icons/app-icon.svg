@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 앱 아이콘: 연보라 배경 + 핀 얼굴 (스토어가 모서리를 자동으로 둥글게 처리) -->
+  <rect width="512" height="512" fill="#F1EEFF"/>
+  <g transform="translate(96 88) scale(3.2)">
+    <path d="M50 96 C38 82 14 66 14 42 A36 36 0 1 1 86 42 C86 66 62 82 50 96 Z" fill="#6C5CE7"/>
+    <circle cx="31" cy="51" r="5" fill="#FFB3C7"/>
+    <circle cx="69" cy="51" r="5" fill="#FFB3C7"/>
+    <circle cx="39" cy="40" r="5" fill="#FFFFFF"/>
+    <circle cx="61" cy="40" r="5" fill="#FFFFFF"/>
+    <path d="M39 52 Q50 62 61 52" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

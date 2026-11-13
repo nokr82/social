@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="소셜링 로고">
+  <!-- 위치핀 = 동네(위치기반), 얼굴 = 아바타 -->
+  <path d="M50 96 C38 82 14 66 14 42 A36 36 0 1 1 86 42 C86 66 62 82 50 96 Z" fill="#6C5CE7"/>
+  <circle cx="31" cy="51" r="5" fill="#FFB3C7"/>
+  <circle cx="69" cy="51" r="5" fill="#FFB3C7"/>
+  <circle cx="39" cy="40" r="5" fill="#FFFFFF"/>
+  <circle cx="61" cy="40" r="5" fill="#FFFFFF"/>
+  <path d="M39 52 Q50 62 61 52" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+</svg>

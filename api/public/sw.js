@@ -23,7 +23,7 @@ self.addEventListener('push', (event) => {
 
         await self.registration.showNotification(msg.title ?? '소셜링', {
             body: msg.body ?? '',
-            icon: msg.icon ?? '/icons/icon-192.png',
+            icon: msg.icon ?? '/icons/app-icon-192.png',
             badge: msg.badge ?? '/icons/badge-72.png',
             tag: msg.tag,          // 같은 tag는 덮어씀 (대화방당 알림 1개)
             renotify: !!msg.tag,   // 덮어써도 다시 진동/소리

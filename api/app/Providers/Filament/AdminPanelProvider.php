@@ -29,6 +29,7 @@ class AdminPanelProvider extends PanelProvider
             ->authGuard('admin')          // 앱 사용자(users)가 아니라 admins 테이블로 로그인
             ->login()
             ->brandName('소셜링 관리')
+            ->favicon('/icons/favicon.svg')
             ->colors([
                 'primary' => Color::Violet,   // 앱 메인 색(보라)과 맞춤
             ])

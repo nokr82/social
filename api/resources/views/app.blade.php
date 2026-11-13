@@ -7,6 +7,9 @@
     <title>소셜링</title>
     {{-- 홈 화면에 추가(PWA): iPhone은 이렇게 설치해야 웹 푸시를 받을 수 있음 --}}
     <link rel="manifest" href="/manifest.webmanifest">
+    {{-- 파비콘: SVG를 지원하는 브라우저는 SVG(선명), 나머지는 ico --}}
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="소셜링">

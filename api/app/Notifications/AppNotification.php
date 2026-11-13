@@ -65,7 +65,7 @@ abstract class AppNotification extends Notification implements ShouldQueue
         return (new WebPushMessage)
             ->title($this->payload['title'])
             ->body($this->payload['body'])
-            ->icon('/icons/icon-192.png')
+            ->icon('/icons/app-icon-192.png')
             ->badge('/icons/badge-72.png')
             // 같은 tag면 폰 알림이 쌓이지 않고 최신 것으로 바뀜 (한 대화방 = 알림 1개)
             ->tag($this->payload['tag'] ?? $this->payload['kind'].'-'.$notification->id)

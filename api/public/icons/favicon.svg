@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- 작은 크기용: 볼터치 빼고 눈·입 굵게 -->
+  <path d="M50 98 C37 83 10 66 10 42 A40 40 0 1 1 90 42 C90 66 63 83 50 98 Z" fill="#6C5CE7"/>
+  <circle cx="37" cy="39" r="7" fill="#FFFFFF"/>
+  <circle cx="63" cy="39" r="7" fill="#FFFFFF"/>
+  <path d="M36 54 Q50 66 64 54" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+</svg>
