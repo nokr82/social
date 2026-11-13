@@ -4,6 +4,7 @@
  * - 공개 사진: 사진마다 하트 (내가 누르면 +1, 다시 누르면 취소)
  * - 친구에게만 공개: 성별·나이·비공개 사진 (친구 전에는 잠금)
  * - 하단: 친구 요청 / 요청 보냄 / 받은 요청 수락하러 가기 / 친구
+ * - 사진을 누르면 크게 보기 (?set=public|private&photo=순번). 주소로 열어서 휴대폰 뒤로가기가 사진만 닫는다
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -11,6 +12,7 @@ import AvatarFace from '../components/AvatarFace.vue';
 import FriendRequestSheet from '../components/FriendRequestSheet.vue';
 import HeartIcon from '../components/HeartIcon.vue';
 import LockIcon from '../components/LockIcon.vue';
+import PhotoViewer from '../components/PhotoViewer.vue';
 import { ApiError, get, post } from '../lib/api';
 import { openDm } from '../lib/dm';
 import { showToast } from '../lib/toast';
@@ -51,6 +53,43 @@ async function toggleLike(photo) {
     } finally {
         liking.value.delete(photo.id);
     }
+}
+
+// ── 사진 크게 보기 ──
+// 묶음: public = 공개 사진, private = 친구 공개 사진 (친구가 아니면 비어 있음 → 주소를 직접 쳐도 안 열림)
+const viewerSet = computed(() => (route.query.set === 'private' ? 'private' : 'public'));
+const viewerPhotos = computed(() => {
+    if (!user.value) return [];
+    if (viewerSet.value === 'private') return isFriend.value ? user.value.private_photos : [];
+    return user.value.photos;
+});
+// 범위를 벗어난 순번(사진이 지워졌거나 주소를 잘못 친 경우)이면 null = 안 엶
+const viewerIndex = computed(() => {
+    const i = Number(route.query.photo);
+    return Number.isInteger(i) && i >= 0 && i < viewerPhotos.value.length ? i : null;
+});
+// 이 화면에서 눌러 연 경우에만 back()으로 닫는다.
+// 새로고침·링크로 바로 열린 경우 back()하면 앱 밖으로 나가므로 주소만 정리
+let openedHere = false;
+
+function openViewer(set, i) {
+    openedHere = true;
+    router.push({ query: { ...route.query, set, photo: i } });
+}
+
+function closeViewer() {
+    if (openedHere) {
+        openedHere = false;
+        router.back();
+        return;
+    }
+    const { set, photo, ...rest } = route.query;
+    router.replace({ query: rest });
+}
+
+// 넘길 때는 replace: 기록이 쌓이지 않아 뒤로가기 한 번이면 닫힘
+function onViewerChange(i) {
+    router.replace({ query: { ...route.query, photo: i } });
 }
 
 function onSent() {
@@ -103,7 +142,9 @@ onMounted(load);
                 </div>
                 <div class="grid2">
                     <div v-for="(p, i) in user.photos" :key="p.id" class="photo big">
-                        <img :src="p.url" :alt="`공개 사진 ${i + 1}`" loading="lazy">
+                        <button class="zoom" :aria-label="`공개 사진 ${i + 1} 크게 보기`" @click="openViewer('public', i)">
+                            <img :src="p.url" :alt="`공개 사진 ${i + 1}`" loading="lazy">
+                        </button>
                         <button
                             v-if="user.relation !== 'self'" class="like"
                             :aria-pressed="p.liked" :aria-label="`${p.liked ? '하트 취소' : '하트 누르기'}, 현재 ${p.like_count}개`"
@@ -129,8 +170,10 @@ onMounted(load);
 
                 <template v-if="isFriend">
                     <div v-if="user.private_photos.length" class="grid3">
-                        <div v-for="p in user.private_photos" :key="p.id" class="photo mid">
-                            <img :src="p.url" alt="친구 공개 사진" loading="lazy">
+                        <div v-for="(p, i) in user.private_photos" :key="p.id" class="photo mid">
+                            <button class="zoom" :aria-label="`친구 공개 사진 ${i + 1} 크게 보기`" @click="openViewer('private', i)">
+                                <img :src="p.url" alt="친구 공개 사진" loading="lazy">
+                            </button>
                             <button class="like sm" :aria-pressed="p.liked" @click="toggleLike(p)"><HeartIcon :size="14" :filled="p.liked" />{{ p.like_count }}</button>
                         </div>
                     </div>
@@ -155,6 +198,12 @@ onMounted(load);
             <button v-else-if="user.relation === 'received'" class="btn-primary" @click="router.push({ name: 'friend-requests' })">받은 요청 확인하기</button>
             <button v-else class="btn-primary" @click="openDm(router, user.id)">대화하기</button>
         </div>
+
+        <PhotoViewer
+            v-if="viewerIndex !== null"
+            :photos="viewerPhotos" :start="viewerIndex" :can-like="user.relation !== 'self'"
+            @close="closeViewer" @change="onViewerChange" @like="toggleLike"
+        />
 
         <FriendRequestSheet v-if="requesting" :user="user" :plaza-id="route.query.from ?? null" @close="requesting = false" @sent="onSent" />
     </div>
@@ -186,6 +235,7 @@ onMounted(load);
 .photo.big { height: 170px; }
 .photo.mid { height: 108px; border-radius: 16px; }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.zoom { width: 100%; height: 100%; padding: 0; border: none; background: none; display: block; cursor: zoom-in; }
 .like { position: absolute; right: 8px; bottom: 8px; height: 36px; padding: 0 10px; border: none; border-radius: 18px; background: rgba(255,255,255,.92); display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: var(--c-ink); }
 .like.sm { height: 28px; right: 6px; bottom: 6px; font-size: 11px; padding: 0 8px; }
 .empty { margin: 0; font-size: 13px; color: var(--c-muted); text-align: center; padding: 20px; background: var(--c-surface); border-radius: 16px; }

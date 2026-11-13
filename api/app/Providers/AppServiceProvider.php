@@ -56,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
         // 채팅 도배 방지: 사용자당 분당 30개
         RateLimiter::for('chat', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));
         // 인증 API 무차별 대입 방지: IP당 분당 20회
+        // 위치 갱신: 앱은 30초 또는 50m마다 보냄 → 분당 12회면 여유 (그 이상은 배터리·서버 낭비)
+        RateLimiter::for('location', fn (Request $request) => Limit::perMinute(12)->by($request->user()?->id ?: $request->ip()));
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(20)->by($request->ip()));
     }
 }

@@ -22,6 +22,7 @@ bash scripts/deploy.sh --front   # 프론트(Vue)까지 서버에서 빌드
 | 7 | PHP 이미지 갱신(백업용 mariadb-dump·gmp 추가): `docker compose build php && docker compose up -d` |
 | 8 | `bash scripts/deploy.sh --front` → `https://social.devhong.shop/up` 200 확인 → 카카오 가입 시험 |
 | 9 | 동네 경계 적재(처음 한 번, 약 1분): `docker compose exec php php artisan regions:import` → 메인 화면에 '○○구 광장' 확인 |
+| 10 | 친구 지도: 카카오 디벨로퍼스 > 앱 > **카카오맵 사용 설정 ON** → 앱 키의 **JavaScript 키**를 `api/.env`의 `KAKAO_JS_KEY`에 → `bash scripts/deploy.sh` (카드 미등록 시 과금 없음) |
 
 `deploy.sh` 8단계 헬스체크는 지금 IP로 확인한다. HTTPS 전환 후에는 `Host:` 값을 도메인으로 바꾸기.
 
@@ -31,6 +32,7 @@ bash scripts/deploy.sh --front   # 프론트(Vue)까지 서버에서 빌드
 - 복구: `gunzip -c 백업.sql.gz | docker compose exec -T mariadb mariadb -u root -p social`
 - 서버 전체: Lightsail > 스냅샷 > **자동 스냅샷** 켜기
 - 동네 경계 갱신(행정구역 개편 시, 연 1~2회 확인): [admdongkor](https://github.com/vuski/admdongkor) 최신 `verYYYYMMDD` 폴더 → `api/.env`에 `REGION_BOUNDARY_URL=` 지정 → `regions:import` 재실행. 경계 데이터 출처 표시(통계청 SGIS·vuski/admdongkor, CC BY 4.0)를 앱 정보 화면에 유지
+- 위치 공유: 좌표는 Redis에 사람당 마지막 1개(15분)만, DB엔 '누가 언제 봤는지'(`location_access_logs`, 1년 뒤 자동 삭제)만 남음. 정식 출시 전 위치기반서비스사업 신고 + 위치정보 이용약관 공개 필요
 - 관리자 화면 IP 제한: `api/.env`의 `ADMIN_ALLOWED_IPS` → `bash scripts/deploy.sh`
 
 ## 베타 운영 주의

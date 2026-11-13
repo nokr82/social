@@ -78,7 +78,10 @@ onBeforeUnmount(() => channelName && window.Echo?.private(channelName).stopListe
 <template>
     <div class="chat-tab">
         <div class="head">
-            <h1 class="title" style="font-size: 26px">채팅</h1>
+            <h1 class="title" style="font-size: 26px; flex: 1">채팅</h1>
+            <button class="round" aria-label="친구 지도" @click="router.push({ name: 'map' })">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>
+            </button>
             <button class="round" aria-label="친구 검색" @click="tab = 'friends'">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
             </button>
@@ -171,7 +174,7 @@ onBeforeUnmount(() => channelName && window.Echo?.private(channelName).stopListe
 
 <style scoped>
 .chat-tab { height: 100%; display: flex; flex-direction: column; position: relative; }
-.head { display: flex; align-items: center; justify-content: space-between; padding: 18px 12px 6px 20px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 18px 12px 6px 20px; }
 .round { width: 44px; height: 44px; border-radius: 22px; border: none; background: var(--c-surface); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-soft); }
 .tabs { margin: 4px 20px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; background: #ECE8FF; padding: 4px; border-radius: 14px; }
 .tabs button { height: 40px; border: none; border-radius: 11px; background: transparent; color: var(--c-muted); font-size: 14px; font-weight: 500; }

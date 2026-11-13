@@ -4,6 +4,7 @@
  * - 상단 고정: 시간·정확한 장소·지도 + [도착했어요]
  * - 약속 시간이 지나면 '안 왔어요' 상호 확인 (노쇼는 2표, 2인 번개는 1표로 확정)
  * - 약속 24시간 뒤 자동 종료 (읽기만 가능)
+ * - 참여자 아바타·닉네임 탭 → 프로필 (친구가 아니면 공개 정보만, 차단 관계면 '없는 사용자')
  * 실시간: private 채널 meetup.{id} → '.meetup.message' (일반·안내 메시지)
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -134,6 +135,11 @@ async function scrollToBottom() {
 
 const isArrivalNote = (m) => m.type === 'system' && m.body.endsWith('도착했어요');
 
+/** 상대 프로필로 (탈퇴 등으로 보낸 사람 정보가 없으면 무시) */
+function openProfile(sender) {
+    if (sender?.id) router.push({ name: 'profile', params: { id: sender.id } });
+}
+
 onMounted(async () => {
     await load();
     if (room.value) listen();
@@ -196,9 +202,11 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
                     <span class="time">{{ ago(m.created_at) }}</span>
                 </div>
                 <div v-else class="other">
-                    <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" style="flex-shrink: 0" />
+                    <button class="av-btn" :aria-label="`${m.sender?.nickname ?? '참여자'} 프로필 보기`" @click="openProfile(m.sender)">
+                        <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" />
+                    </button>
                     <div class="col2">
-                        <span class="who">{{ m.sender?.nickname }} <i v-if="m.sender?.id === hostId">호스트</i></span>
+                        <button class="who" @click="openProfile(m.sender)">{{ m.sender?.nickname }} <i v-if="m.sender?.id === hostId">호스트</i></button>
                         <MessageAttachment v-if="m.type !== 'text'" :message="m" />
                         <span v-else class="b">{{ m.body }}</span>
                     </div>
@@ -272,7 +280,8 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
 .sys.arrived { color: var(--c-ok); background: #E6F8EF; }
 .other { display: flex; gap: 8px; align-items: flex-start; }
 .col2 { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.who { font-size: 11px; color: var(--c-muted); font-weight: 700; }
+.who { font-size: 11px; color: var(--c-muted); font-weight: 700; border: none; background: none; padding: 0; text-align: left; align-self: flex-start; }
+.av-btn { flex-shrink: 0; padding: 0; border: none; background: none; display: flex; border-radius: 16px; }
 .who i { font-style: normal; color: var(--c-primary-ink); }
 .other .b { background: var(--c-surface); border-radius: 4px 16px 16px 16px; padding: 8px 12px; font-size: 14px; max-width: 240px; word-break: break-word; }
 .mine { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }

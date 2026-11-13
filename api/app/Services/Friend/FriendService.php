@@ -7,6 +7,7 @@ use App\Exceptions\DomainException;
 use App\Models\FriendRequest;
 use App\Models\Friendship;
 use App\Models\User;
+use App\Services\Location\LocationShareService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -120,7 +121,7 @@ class FriendService
         $req->delete();
     }
 
-    /** 차단 시: 친구 관계·오가는 요청 모두 정리 */
+    /** 차단 시: 친구 관계·오가는 요청·위치 공유 모두 정리 */
     public function severAll(int $a, int $b): void
     {
         Friendship::where(fn ($q) => $q->where('user_id', $a)->where('friend_id', $b))
@@ -129,6 +130,8 @@ class FriendService
         FriendRequest::where(fn ($q) => $q->where('from_id', $a)->where('to_id', $b))
             ->orWhere(fn ($q) => $q->where('from_id', $b)->where('to_id', $a))
             ->delete();
+        // 위치 공유도 양방향 즉시 해제 (보던 지도에서도 바로 사라짐)
+        app(LocationShareService::class)->severBetween($a, $b);
     }
 
     private function assertReceiver(User $me, FriendRequest $req, string $expected): void

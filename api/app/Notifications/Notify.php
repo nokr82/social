@@ -36,6 +36,32 @@ class Notify
         ]));
     }
 
+    public static function locationShareStarted(User $sharer, User $viewer, ?\DateTimeInterface $until): void
+    {
+        $span = $until ? '' : ' (직접 끌 때까지)';
+        $viewer->notify(new LocationShareStarted([
+            'kind' => 'location_share_started',
+            'title' => '위치 공유',
+            'body' => "{$sharer->nickname}님이 나에게 위치를 공유하기 시작했어요{$span}",
+            'url' => '/map',
+            'actor' => AvatarSummary::of($sharer),
+            'tag' => "loc-share-{$sharer->id}",
+        ]));
+    }
+
+    /** 위치정보법상 '제공 사실 통보'. 같은 친구는 일정 시간에 1번만 (LocationShareService가 조절) */
+    public static function locationViewed(User $viewer, User $sharer): void
+    {
+        $sharer->notify(new LocationViewed([
+            'kind' => 'location_viewed',
+            'title' => '위치 확인',
+            'body' => "{$viewer->nickname}님이 내 위치를 확인했어요",
+            'url' => '/map',
+            'actor' => AvatarSummary::of($viewer),
+            'tag' => "loc-viewed-{$viewer->id}",
+        ]));
+    }
+
     public static function meetupJoined(Meetup $meetup, User $joiner): void
     {
         if ($joiner->id === $meetup->host_id) {

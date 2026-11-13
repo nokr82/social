@@ -19,7 +19,7 @@ const hasMore = ref(false);
 const loading = ref(true);
 
 // 아바타가 없는 알림(1시간 전 알림 등)에 쓸 아이콘
-const ICONS = { meetup_reminder: '⏰', meetup_canceled: '🌧️', meetup_joined: '⚡', friend_request: '💌', friend_accepted: '🤝' };
+const ICONS = { meetup_reminder: '⏰', meetup_canceled: '🌧️', meetup_joined: '⚡', friend_request: '💌', friend_accepted: '🤝', location_share_started: '📍', location_viewed: '👀' };
 
 async function load(more = false) {
     loading.value = true;

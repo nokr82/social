@@ -58,4 +58,10 @@ class MetaController extends Controller
             ],
         ]);
     }
+
+    /** GET /api/meta/map — 친구 지도용 카카오맵 JavaScript 키 (없으면 지도 대신 목록으로 보여줌) */
+    public function map(): JsonResponse
+    {
+        return response()->json(['kakao_js_key' => config('services.kakao.js_key')]);
+    }
 }

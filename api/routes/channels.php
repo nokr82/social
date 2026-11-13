@@ -60,3 +60,11 @@ Broadcast::channel('town.{plaza}.{zone}.{channel}', function (User $user, Plaza 
 
     return AvatarSummary::of($user->loadMissing('avatar'));
 });
+
+/*
+| 친구 지도 채널: location.{보는 사람} — 본인만. 지도 화면을 연 동안만 구독한다
+| (서버는 공유받는 사람의 채널로만 보내므로, 남의 위치를 받으려면 그 사람이 나에게 공유해야 함)
+*/
+Broadcast::channel('location.{viewer}', function (User $user, $viewer) {
+    return $user->isActive() && (int) $user->id === (int) $viewer;
+});

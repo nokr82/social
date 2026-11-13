@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PlazaController;
 use App\Http\Controllers\Api\PlazaMessageController;
 use App\Http\Controllers\Api\FriendRequestController;
+use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\SafetyController;
 use App\Http\Controllers\Api\TownController;
@@ -38,6 +39,7 @@ Route::get('meta/report-reasons', [MetaController::class, 'reportReasons']);
 Route::get('meta/kick-reasons', [MetaController::class, 'kickReasons']);
 Route::get('meta/push', [MetaController::class, 'push']);
 Route::get('meta/auth', [MetaController::class, 'auth']);
+Route::get('meta/map', [MetaController::class, 'map']);
 
 Route::middleware(['auth:sanctum', 'seen'])->group(function () {
     // 정지된 계정도 내 정보 조회·로그아웃은 가능
@@ -118,6 +120,14 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::post('meetups/{meetup}/messages', [MeetupController::class, 'send'])->middleware('throttle:chat');
         Route::post('meetups/{meetup}/read', [MeetupController::class, 'read']);
         Route::post('meetups/{meetup}/images', [MeetupController::class, 'sendImage'])->middleware('throttle:20,1');
+
+        // 친구 위치 공유 (지도)
+        Route::get('location/shares', [LocationController::class, 'shares']);
+        Route::put('location/shares/{user}', [LocationController::class, 'share'])->middleware('throttle:30,1');
+        Route::delete('location/shares/{user}', [LocationController::class, 'stop']);
+        Route::delete('location/shares', [LocationController::class, 'stopAll']);
+        Route::post('location', [LocationController::class, 'update'])->middleware('throttle:location');
+        Route::get('location/friends', [LocationController::class, 'friends']);
 
         Route::get('blocks', [SafetyController::class, 'blocks']);
         Route::get('blocks/mine', [SafetyController::class, 'mine']);

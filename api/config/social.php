@@ -84,8 +84,9 @@ return [
         'ci_pepper' => env('CI_PEPPER'),
     ],
 
-    // 개발용 가짜 드라이버: local/testing에서만 'fake' 사용
-    // 동네 상시 광장: 법정동마다 1개. 구역(관심사)별·채널(30명)별로 따로 보이고 대화한다
+    // 동네 상시 광장: 동네(region_code)마다 1개. 운영 기본(boundary)은 시·군·구 단위 (SGG-11680 형식)
+    // 구역(관심사)별·채널(30명)별로 따로 보이고 대화한다
+    // 주의: REGION_DRIVER를 바꾸면 region_code 체계가 달라져 기존 동네 광장과 이어지지 않는다
     'town' => [
         'channel_capacity' => 30,        // 한 채널 최대 인원. 차면 다음 채널로 자동 배정
         'max_channels' => 10,            // 구역당 최대 채널 (구역당 300명)
@@ -110,6 +111,7 @@ return [
     // 관리자 화면 접근 허용 IP (쉼표 구분, 비우면 제한 없음)
     'admin_allowed_ips' => env('ADMIN_ALLOWED_IPS', ''),
 
+    // 개발용 가짜 드라이버: local/testing에서만 'fake' 사용 (운영은 AppServiceProvider가 부팅 차단)
     'drivers' => [
         'social' => env('SOCIAL_LOGIN_DRIVER', 'real'),   // real | fake
         // pass  : PASS 대행사 (계약 후)
@@ -118,7 +120,7 @@ return [
         'identity' => env('IDENTITY_DRIVER', 'fake'),
         'presence' => env('PRESENCE_DRIVER', 'redis'),    // redis | array
         // boundary : 서버에 적재한 경계로 시·군·구 판단 (무료·무제한, 운영 기본)
-        // kakao    : 카카오 로컬 API로 법정동 판단 (카카오맵 사용 설정 필요)
+        // kakao    : 예비. 카카오 로컬 API로 법정동 판단 (카카오맵 사용 설정 필요, 코드 체계가 boundary와 다름)
         // fake     : 개발·테스트용 (운영 부팅 차단)
         'region' => env('REGION_DRIVER', 'fake'),
     ],

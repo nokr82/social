@@ -35,6 +35,8 @@ return [
         'client_secret' => env('KAKAO_CLIENT_SECRET'),   // 카카오 로그인 > 보안 > Client Secret (사용함일 때)
         // 카카오 콘솔 '리다이렉트 URI'와 정확히 같아야 함
         'redirect_uri' => env('KAKAO_REDIRECT_URI', rtrim((string) env('APP_URL'), '/').'/auth/kakao'),
+        // 카카오맵 JavaScript 키 (친구 지도). 브라우저에 노출되는 값이라 비밀 아님 — 대신 카카오 콘솔 '플랫폼 > Web'에 도메인 등록 필수
+        'js_key' => env('KAKAO_JS_KEY'),
     ],
 
     // 애플 로그인: identity_token의 aud(앱 번들 ID) 검증용

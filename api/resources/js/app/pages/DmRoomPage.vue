@@ -2,6 +2,7 @@
 /**
  * 친구 1:1 대화 (디자인: DMRoom.dc.html)
  * - 헤더: 친구 아바타·성별·나이·접속 상태 (탭 → 프로필), ⋯ → 신고·차단
+ * - 메시지 옆 상대 아바타도 탭 → 프로필
  * - 첫 줄: '○○에서 만나 친구가 됐어요'
  * - 내 마지막 메시지에 '읽음 · 12분 전' (상대 last_read_id 기준)
  * 실시간: private 채널 chat.{room} — '.dm.sent'(새 메시지), '.dm.read'(상대가 읽음)
@@ -142,6 +143,11 @@ function openReport() {
 // 다른 탭에 있다가 돌아오면 읽음 처리
 const onVisible = () => document.visibilityState === 'visible' && markRead();
 
+/** 상대 프로필로 (탈퇴 등으로 보낸 사람 정보가 없으면 무시) */
+function openProfile(sender) {
+    if (sender?.id) router.push({ name: 'profile', params: { id: sender.id } });
+}
+
 onMounted(() => {
     load();
     document.addEventListener('visibilitychange', onVisible);
@@ -190,7 +196,9 @@ onBeforeUnmount(() => {
                     <span v-else-if="m.id === lastMineId" class="meta">{{ ago(m.created_at) }}</span>
                 </div>
                 <div v-else class="other">
-                    <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" style="flex-shrink: 0" />
+                    <button class="av-btn" :aria-label="`${m.sender?.nickname ?? '상대'} 프로필 보기`" @click="openProfile(m.sender)">
+                        <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" />
+                    </button>
                     <MessageAttachment v-if="m.type !== 'text'" :message="m" />
                     <span v-else class="b">{{ m.body }}</span>
                 </div>
@@ -234,6 +242,7 @@ onBeforeUnmount(() => {
 .msgs { flex: 1; min-height: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
 .met { align-self: center; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--c-primary-deep); background: #ECE8FF; padding: 5px 12px; border-radius: 12px; }
 .other { display: flex; gap: 8px; align-items: flex-start; }
+.av-btn { flex-shrink: 0; padding: 0; border: none; background: none; display: flex; border-radius: 16px; }
 .other .b { background: var(--c-surface); border-radius: 4px 16px 16px 16px; padding: 8px 12px; font-size: 14px; max-width: 240px; word-break: break-word; }
 .mine { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .mine .b { background: var(--c-primary); color: #fff; border-radius: 16px 4px 16px 16px; padding: 8px 12px; font-size: 14px; max-width: 240px; word-break: break-word; }
