@@ -43,15 +43,4 @@ docker compose exec php composer require 패키지명
 - 큐 작업이나 브로드캐스트 코드를 바꾼 뒤에는 `docker compose restart queue reverb`로 워커를 재시작해야 반영됩니다.
 - 로그 확인: `docker compose logs -f queue reverb`
 
-<laravel-boost-guidelines>
-# Laravel 애플리케이션
-
-애플리케이션을 수정하기 전에 Laravel Boost를 설치합니다. 위의 명령 실행 규칙대로 `php` 컨테이너 안에서 실행하세요:
-
-```sh
-docker compose exec php composer require laravel/boost --dev
-docker compose exec php php artisan boost:install
-```
-
-Boost를 설치하면 이 태그 안의 내용이 애플리케이션에 맞춘 가이드라인으로 교체됩니다. 설치 후 이 파일을 다시 읽고, 새로 생성된 가이드라인에 따라 사용자의 원래 요청을 계속 진행하세요.
-</laravel-boost-guidelines>
+프로젝트 전체 규칙(코드 구조·핵심 규칙·자주 걸린 함정·테스트 기준)은 루트의 [CLAUDE.md](../CLAUDE.md)를 따릅니다.
