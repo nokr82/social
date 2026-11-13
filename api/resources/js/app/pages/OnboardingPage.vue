@@ -25,7 +25,11 @@ import { showToast } from '../lib/toast';
 
 const router = useRouter();
 const route = useRoute();
-const authMeta = ref({ social: 'fake', identity: 'fake', kakao: {} }); // 서버 설정을 받기 전 기본값
+// 서버 설정(로그인·인증 방식). 받기 전엔 null → 시작 버튼 비활성
+// 주의: 기본값을 'fake'로 두면 설정을 받기 전에 누르거나 요청이 실패했을 때
+//       운영 서버에 가짜 로그인 값을 보내 '로그인 정보를 확인할 수 없어요'가 뜬다
+const authMeta = ref(null);
+const metaError = ref(false);
 const KAKAO_STATE_KEY = 'social.kakaoState';
 
 const step = ref(0);
@@ -42,7 +46,8 @@ const fileInput = ref(null);
 const devSheet = reactive({ open: false, gender: 'F', birth: '1997-05-05' });
 // 베타 직접 입력 (IDENTITY_DRIVER=self)
 const selfForm = reactive({ gender: '', birth: '', adult: false });
-const selfMode = computed(() => authMeta.value.identity === 'self');
+const selfMode = computed(() => authMeta.value?.identity === 'self');
+const realLogin = computed(() => !!authMeta.value && authMeta.value.social !== 'fake');
 const selfValid = computed(() => selfForm.gender && /^\d{4}-\d{2}-\d{2}$/.test(selfForm.birth) && selfForm.adult);
 
 const bars = computed(() => [1, 2, 3].map((i) => i <= step.value));
@@ -72,7 +77,8 @@ async function run(fn) {
 
 /** 0 → 1: 소셜 로그인 */
 const start = () => run(async () => {
-    if (authMeta.value.social !== 'fake') return goKakao();
+    if (!authMeta.value) return; // 설정을 받기 전 (버튼도 비활성)
+    if (realLogin.value) return goKakao();
     await afterSocial(await post('/auth/social', { provider: 'kakao', token: devSocialToken() }));
 });
 
@@ -81,7 +87,7 @@ const start = () => run(async () => {
  * state: 우리가 보낸 요청에 대한 응답인지 확인하는 일회용 값 (다른 사이트가 꾸며 보낸 code 차단)
  */
 function goKakao() {
-    const { client_id: clientId, redirect_uri: redirectUri } = authMeta.value.kakao ?? {};
+    const { client_id: clientId, redirect_uri: redirectUri } = authMeta.value?.kakao ?? {};
     if (!clientId) return showToast('카카오 로그인 설정이 아직 안 됐어요');
     const state = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     sessionStorage.setItem(KAKAO_STATE_KEY, state);
@@ -130,10 +136,18 @@ const verifySelf = () => run(async () => {
     identity.value = { gender: res.gender, age: res.age };
 });
 
-onMounted(async () => {
+/** 서버 설정 받기. 실패하면 가짜 모드로 넘어가지 않고 다시 시도 버튼을 보여줌 */
+async function loadMeta() {
+    metaError.value = false;
     try {
         authMeta.value = await get('/meta/auth');
-    } catch { /* 기본값(개발 모드)으로 진행 */ }
+    } catch {
+        metaError.value = true;
+    }
+}
+
+onMounted(async () => {
+    await loadMeta();
     if (route.name === 'kakao-callback') await handleKakaoReturn();
 });
 
@@ -216,8 +230,9 @@ function back() {
                 <h1 class="title" style="font-size: 32px">우리 동네 광장에서<br>만나요</h1>
                 <p class="lead">근처 사람들과 아바타로 어울리고,<br>마음 맞으면 친구가 돼요</p>
             </div>
-            <button class="btn-primary" :class="{ kakao: authMeta.social !== 'fake' }" :disabled="busy" @click="start">
-                {{ authMeta.social !== 'fake' ? '카카오로 시작하기' : '본인인증으로 시작하기' }}
+            <button v-if="metaError" class="btn-primary" @click="loadMeta">서버에 연결할 수 없어요 · 다시 시도</button>
+            <button v-else class="btn-primary" :class="{ kakao: realLogin }" :disabled="busy || !authMeta" @click="start">
+                {{ !authMeta ? '불러오는 중…' : realLogin ? '카카오로 시작하기' : '개발용 로그인으로 시작하기' }}
             </button>
             <p class="foot">만 19세 이상만 가입할 수 있어요</p>
         </section>
