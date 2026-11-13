@@ -100,6 +100,13 @@ return [
         ],
     ],
 
+    // 동네 경계 데이터 (REGION_DRIVER=boundary, `php artisan regions:import`로 적재)
+    // 새 버전: https://github.com/vuski/admdongkor 의 verYYYYMMDD 폴더 → 날짜만 바꾸고 다시 적재
+    // 출처 표시 의무: 통계청 SGIS 행정동 경계(공공누리 1유형), 가공 vuski/admdongkor (CC BY 4.0)
+    'region_boundary' => [
+        'url' => env('REGION_BOUNDARY_URL', 'https://raw.githubusercontent.com/vuski/admdongkor/master/ver20261001/HangJeongDong_ver20261001.geojson'),
+    ],
+
     // 관리자 화면 접근 허용 IP (쉼표 구분, 비우면 제한 없음)
     'admin_allowed_ips' => env('ADMIN_ALLOWED_IPS', ''),
 
@@ -110,6 +117,9 @@ return [
         // fake  : 개발·테스트용 (운영 부팅 차단)
         'identity' => env('IDENTITY_DRIVER', 'fake'),
         'presence' => env('PRESENCE_DRIVER', 'redis'),    // redis | array
-        'region' => env('REGION_DRIVER', 'fake'),         // kakao | fake (카카오 REST 키 설정 전, 운영에서는 kakao 필수)
+        // boundary : 서버에 적재한 경계로 시·군·구 판단 (무료·무제한, 운영 기본)
+        // kakao    : 카카오 로컬 API로 법정동 판단 (카카오맵 사용 설정 필요)
+        // fake     : 개발·테스트용 (운영 부팅 차단)
+        'region' => env('REGION_DRIVER', 'fake'),
     ],
 ];

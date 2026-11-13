@@ -251,6 +251,8 @@ onMounted(() => load().catch((e) => showToast(errMsg(e, '정보를 불러오지 
             <div class="sheet" role="dialog" aria-label="설정">
                 <div class="grip" />
                 <button class="sheet-row" @click="logout">로그아웃</button>
+                <!-- 동네 경계 데이터 라이선스상 출처 표시 의무 (지우지 말 것) -->
+                <p class="credit">동네 경계: 통계청 SGIS(공공누리 제1유형) 가공 · vuski/admdongkor (CC BY 4.0)</p>
                 <button class="sheet-cancel" @click="settings = false">닫기</button>
             </div>
         </div>
@@ -311,6 +313,7 @@ onMounted(() => load().catch((e) => showToast(errMsg(e, '정보를 불러오지 
 .grip { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--c-line); margin-bottom: 4px; }
 .sheet-row { height: 56px; border: none; background: var(--c-bg); border-radius: 16px; font-size: 16px; font-weight: 700; color: var(--c-ink); }
 .sheet-row.danger { color: var(--c-danger); }
+.credit { margin: 10px 0 0; font-size: 11px; line-height: 1.4; color: var(--c-ink-2); text-align: center; opacity: .7; }
 .sheet-cancel { height: 50px; border: none; background: none; font-size: 15px; font-weight: 700; color: var(--c-ink-2); }
 .preview { align-self: center; width: 108px; height: 108px; border-radius: 54px; background: #E9E4FF; display: flex; align-items: center; justify-content: center; }
 .field { display: flex; flex-direction: column; gap: 8px; }

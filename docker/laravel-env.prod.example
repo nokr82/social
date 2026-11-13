@@ -36,9 +36,10 @@ SOCIAL_LOGIN_DRIVER=real
 # 비공개 베타: 직접 입력(self). PASS 계약 후 pass
 IDENTITY_DRIVER=self
 PRESENCE_DRIVER=redis
-REGION_DRIVER=kakao
+# 동네 = 시·군·구, 서버 자체 경계로 판단 (무료). 처음 한 번 `php artisan regions:import` 필수
+REGION_DRIVER=boundary
 
-# 카카오 디벨로퍼스 > 내 애플리케이션 > 앱 키 > REST API 키 (로그인·동네 찾기 공용)
+# 카카오 디벨로퍼스 > 내 애플리케이션 > 앱 키 > REST API 키 (로그인용)
 KAKAO_REST_API_KEY=
 KAKAO_CLIENT_SECRET=
 KAKAO_REDIRECT_URI=https://social.devhong.shop/auth/kakao
