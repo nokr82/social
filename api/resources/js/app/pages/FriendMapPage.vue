@@ -5,9 +5,10 @@
  * - 실시간: 이 화면을 연 동안만 location.{내 id} 채널을 구독 → 화면을 나가면 좌표를 받지 않음
  * - 2분마다 목록을 다시 받아 새로 공유한 친구·만료된 공유를 반영
  * - 상단 '내 위치 공유'로 내 공유 설정 시트
+ * - ?focus={친구 id}: 대화방 위치 카드에서 들어오면 그 친구 핀으로 바로 이동·확대
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
 import LocationShareSheet from '../components/LocationShareSheet.vue';
 import { ApiError, get } from '../lib/api';
@@ -20,6 +21,8 @@ import { ago } from '../lib/time';
 import { showToast } from '../lib/toast';
 
 const router = useRouter();
+const route = useRoute();
+const focusId = Number(route.query.focus) || null;
 
 const friends = ref([]);          // [{user, position, until}]
 const myPos = ref(null);          // {lat, lng}
@@ -87,6 +90,14 @@ function drawAll() {
         if (!meOverlay) meOverlay = new kakao.maps.CustomOverlay({ position: pos, content: pinElement('나', '#6C5CE7', true), yAnchor: 1, zIndex: 1 });
         meOverlay.setPosition(pos);
         meOverlay.setMap(map.value);
+    }
+
+    // 대화방 카드에서 온 경우: 그 친구를 가운데에 크게 (한 번만)
+    const target = !fitted && focusId ? located.value.find((f) => f.user.id === focusId) : null;
+    if (target) {
+        map.value.setLevel(3);
+        map.value.setCenter(new kakao.maps.LatLng(target.position.lat, target.position.lng));
+        fitted = true;
     }
 
     // 처음 한 번만: 나와 친구들이 다 보이게 범위 맞춤 (이후엔 사용자가 움직인 화면을 유지)

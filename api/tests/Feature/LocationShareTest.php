@@ -153,4 +153,28 @@ class LocationShareTest extends TestCase
         $this->assertTrue($callback($this->friend, (string) $this->friend->id));
         $this->assertFalse($callback($this->friend, (string) $this->me->id));
     }
+
+    public function test_share_from_dm_posts_location_card_without_extra_notification(): void
+    {
+        Notification::fake();
+        $roomId = $this->actingAs($this->me)->postJson("/api/dm/{$this->friend->id}")->json('room_id');
+
+        $this->actingAs($this->me)->postJson("/api/chats/{$roomId}/location", ['duration' => '1h'])
+            ->assertCreated()
+            ->assertJsonPath('data.type', 'location')
+            ->assertJsonPath('data.location.sharer_id', $this->me->id)
+            ->assertJsonPath('data.location.active', true);
+
+        // 카드(DM)가 곧 알림이라 '공유 시작' 알림은 따로 보내지 않음
+        Notification::assertNotSentTo($this->friend, LocationShareStarted::class);
+
+        // 상대가 대화를 열면 카드가 보이고, 공유를 끄면 '끝남'으로 바뀜
+        $this->actingAs($this->friend)->getJson("/api/chats/{$roomId}/messages")
+            ->assertJsonPath('data.0.location.active', true);
+        $this->actingAs($this->me)->deleteJson("/api/location/shares/{$this->friend->id}");
+        $this->actingAs($this->friend)->getJson("/api/chats/{$roomId}/messages")
+            ->assertJsonPath('data.0.location.active', false);
+
+        $this->actingAs($this->me)->getJson('/api/chats')->assertJsonPath('data.0.last_message.body', '📍 위치를 공유했어요');
+    }
 }

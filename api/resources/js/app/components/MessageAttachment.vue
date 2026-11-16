@@ -3,14 +3,17 @@
  * 채팅 첨부 표시 (DM·번개방 공용)
  * - image : 원래 비율대로 미리 자리를 잡아(덜컹임 방지) 보여주고, 누르면 전체 화면
  * - meetup: 번개 카드 (제목·시간·장소·인원). 끝났거나 취소·삭제된 번개는 흐리게
+ * - location: 위치 공유 카드 (LocationCard — live인 카드만 지도·핀을 그림)
  */
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { meetupWhen } from '../lib/time';
+import LocationCard from './LocationCard.vue';
 
 const props = defineProps({
     message: { type: Object, required: true },
     mine: { type: Boolean, default: false },
+    live: { type: Boolean, default: false }, // 위치 카드: 지도를 그리는 최신 카드인지
 });
 const router = useRouter();
 const viewing = ref(false);
@@ -48,6 +51,9 @@ const mtState = computed(() => {
             </div>
         </Teleport>
     </template>
+
+    <!-- 위치 공유 카드 -->
+    <LocationCard v-else-if="message.type === 'location'" :message="message" :mine="mine" :live="live" />
 
     <!-- 번개 카드 -->
     <button v-else-if="message.type === 'meetup'" class="mt" :class="{ mine, dead: mtState }" :disabled="!mt"

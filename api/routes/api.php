@@ -103,6 +103,7 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::post('chats/{room}/read', [ChatController::class, 'read']);
         Route::post('chats/{room}/images', [ChatController::class, 'sendImage'])->middleware('throttle:20,1');
         Route::post('chats/{room}/meetups', [ChatController::class, 'shareMeetup'])->middleware('throttle:chat');
+        Route::post('chats/{room}/location', [ChatController::class, 'shareLocation'])->middleware('throttle:30,1');
 
         // 번개
         Route::get('meetups', [MeetupController::class, 'index']);

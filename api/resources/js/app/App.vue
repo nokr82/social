@@ -38,10 +38,12 @@ onBeforeUnmount(() => navigator.serviceWorker?.removeEventListener('message', on
 
 <template>
     <div class="phone">
-        <RouterView />
-        <button v-if="locShare.shares.length && route.name !== 'map'" class="loc-pill" @click="router.push({ name: 'map' })">
-            📍 위치 공유 중 · {{ locShare.shares.length }}명
+        <!-- 위치 공유 중 띠: 화면 맨 위에 '자리를 차지하며' 붙음 → 채팅·버튼을 가리지 않음 -->
+        <button v-if="locShare.shares.length && route.name !== 'map'" class="loc-bar" @click="router.push({ name: 'map' })">
+            <span>📍 내 위치 공유 중 · {{ locShare.shares.length }}명</span>
+            <span class="loc-go">보기 ›</span>
         </button>
+        <div class="view"><RouterView /></div>
         <Transition name="fade">
             <div v-if="toast.text" class="toast" role="status">{{ toast.text }}</div>
         </Transition>
@@ -52,7 +54,9 @@ onBeforeUnmount(() => navigator.serviceWorker?.removeEventListener('message', on
 .phone {
     position: relative; margin: 0 auto; width: 100%; max-width: 430px;
     height: 100dvh; background: var(--c-bg); overflow: hidden;
+    display: flex; flex-direction: column; /* 띠가 있으면 그만큼 아래 화면이 줄어듦 */
 }
+.view { flex: 1; min-height: 0; position: relative; } /* 각 화면의 height:100% 기준 */
 @media (min-width: 600px) {
     /* 데스크톱 확인용: 디자인 시안 크기(390x844)의 둥근 프레임 */
     .phone { width: 390px; height: min(844px, 100dvh); margin-top: max(0px, calc((100dvh - 844px) / 2)); border-radius: 32px; box-shadow: 0 20px 60px rgba(31,27,58,.18); }
@@ -62,11 +66,12 @@ onBeforeUnmount(() => navigator.serviceWorker?.removeEventListener('message', on
     background: rgba(31, 27, 58, 0.88); color: #fff; border-radius: 14px; padding: 12px 16px;
     font-size: 14px; text-align: center;
 }
-.loc-pill {
-    position: absolute; left: 12px; bottom: 92px; z-index: 40; height: 30px; padding: 0 12px;
-    border: none; border-radius: 15px; background: rgba(30, 138, 85, 0.92); color: #fff;
-    font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(31, 27, 58, .2);
+.loc-bar {
+    flex-shrink: 0; height: 30px; padding: 0 14px; border: none;
+    display: flex; align-items: center; justify-content: space-between;
+    background: #1E8A55; color: #fff; font-size: 12px; font-weight: 700;
 }
+.loc-go { opacity: .85; }
 .fade-enter-active, .fade-leave-active { transition: opacity .2s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

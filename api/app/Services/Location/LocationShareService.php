@@ -29,8 +29,11 @@ class LocationShareService
 
     private const NOTICE_EVERY_MINUTES = 10;
 
-    /** 공유 켜기(또는 기간 변경) */
-    public function share(User $me, int $friendId, string $duration): LocationShare
+    /**
+     * 공유 켜기(또는 기간 변경)
+     * $notify=false: 대화방에서 켠 경우 — 위치 카드 메시지(DM 푸시)가 곧 알림이라 중복 알림을 보내지 않음
+     */
+    public function share(User $me, int $friendId, string $duration, bool $notify = true): LocationShare
     {
         if (! in_array($duration, self::DURATIONS, true)) {
             throw new DomainException('INVALID_DURATION', '공유 기간을 다시 선택해 주세요');
@@ -45,11 +48,17 @@ class LocationShareService
         $share->expires_at = $this->expiresAt($duration);
         $share->save();
 
-        if ($isNew) {
+        if ($isNew && $notify) {
             Notify::locationShareStarted($me, User::findOrFail($friendId), $share->expires_at);
         }
 
         return $share;
+    }
+
+    /** sharer → viewer 공유가 지금 유효하면 그 행 (대화방 위치 카드의 '공유 중/끝남' 표시용) */
+    public function activeShare(int $sharerId, int $viewerId): ?LocationShare
+    {
+        return LocationShare::active()->where('sharer_id', $sharerId)->where('viewer_id', $viewerId)->first();
     }
 
     public function stop(User $me, int $friendId): void

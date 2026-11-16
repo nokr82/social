@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\ChatMessage;
 use App\Services\Chat\ChatAttachmentService;
+use App\Services\Location\LocationShareService;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AvatarSummary;
 use App\Http\Resources\ChatMessageResource;
@@ -133,6 +134,24 @@ class ChatController extends Controller
 
         return (new ChatMessageResource($this->dm->send($request->user(), $room, $body, ChatMessage::MEETUP, $meta)))
             ->response()->setStatusCode(201);
+    }
+
+    /**
+     * POST /api/chats/{room}/location  {duration: 1h|today|always}
+     * 대화 상대에게 내 위치 공유를 켜고, 대화방에 위치 카드를 남긴다 (상대는 카드에서 지도·핀을 봄).
+     * 이미 공유 중이면 기간만 바꾸고 카드를 새로 남긴다.
+     */
+    public function shareLocation(Request $request, ChatRoom $room, LocationShareService $locations): JsonResponse
+    {
+        $data = $request->validate(['duration' => ['required', \Illuminate\Validation\Rule::in(LocationShareService::DURATIONS)]]);
+        $other = $this->dm->assertMember($request->user(), $room);
+
+        $share = $locations->share($request->user(), $other, $data['duration'], notify: false);
+        $message = $this->dm->send($request->user(), $room, '위치 공유', ChatMessage::LOCATION, [
+            'until' => $share->expires_at?->toIso8601String(),
+        ]);
+
+        return (new ChatMessageResource($message))->response()->setStatusCode(201);
     }
 
     /**

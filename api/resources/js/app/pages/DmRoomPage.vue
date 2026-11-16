@@ -5,6 +5,8 @@
  * - 메시지 옆 상대 아바타도 탭 → 프로필
  * - 첫 줄: '○○에서 만나 친구가 됐어요'
  * - 내 마지막 메시지에 '읽음 · 12분 전' (상대 last_read_id 기준)
+ * - 헤더 핀 버튼: 이 친구에게 내 위치 공유 켜기(1시간·오늘·계속)/끄기 → 대화방에 위치 카드가 남음
+ *   상대 화면의 '최신' 위치 카드 하나만 작은 지도에 정확한 위치 핀을 그린다
  * 실시간: private 채널 chat.{room} — '.dm.sent'(새 메시지), '.dm.read'(상대가 읽음)
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -18,6 +20,7 @@ import { connectEcho } from '../lib/echo';
 import { ago, genderAge } from '../lib/time';
 import { sendChatImage } from '../lib/chatAttach';
 import { showToast } from '../lib/toast';
+import { locShare, refreshShares, remainText, stopSharingWith } from '../lib/locationShare';
 
 const props = defineProps({ roomId: { type: String, required: true } });
 const router = useRouter();
@@ -37,6 +40,14 @@ const meId = computed(() => auth.me?.id);
 // '읽음'은 상대가 읽은 범위 안의 '내 마지막 메시지' 하나에만 표시 (디자인)
 const lastReadMineId = computed(() => [...messages.value].reverse()
     .find((m) => m.sender?.id === meId.value && m.id <= otherRead.value)?.id);
+// 지도를 그릴 위치 카드: 상대가 보낸 것 중 아직 공유 중인 '가장 최근' 카드 하나
+const liveLocationId = computed(() => [...messages.value].reverse()
+    .find((m) => m.type === 'location' && m.sender?.id !== meId.value && m.location?.active)?.id);
+// 내가 이 친구에게 공유 중인지 (전역 공유 상태 기준)
+const myShare = computed(() => locShare.shares.find((s) => s.user.id === room.value?.user.id));
+const locSheet = ref(false);
+const locBusy = ref(false);
+
 const lastMineId = computed(() => [...messages.value].reverse().find((m) => m.sender?.id === meId.value)?.id);
 
 async function load() {
@@ -118,6 +129,36 @@ async function shareMeetup(id) {
     }
 }
 
+/** 위치 공유 켜기: 공유 + 대화방에 위치 카드 (같은 요청 안에서 서버가 처리) */
+async function shareLocation(duration) {
+    locBusy.value = true;
+    try {
+        messages.value.push((await post(`/chats/${props.roomId}/location`, { duration })).data);
+        locSheet.value = false;
+        await refreshShares(); // 전역 '위치 공유 중' 표시 + 위치 보내기 시작
+        scrollToBottom();
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : '위치를 공유하지 못했어요');
+    } finally {
+        locBusy.value = false;
+    }
+}
+
+async function stopLocation() {
+    locBusy.value = true;
+    try {
+        await stopSharingWith(room.value.user.id);
+        // 내가 보낸 위치 카드들은 '끝남'으로 (상대 화면은 다음 갱신 때 바뀜)
+        messages.value.forEach((m) => { if (m.type === 'location' && m.sender?.id === meId.value && m.location) m.location.active = false; });
+        locSheet.value = false;
+        showToast('위치 공유를 껐어요');
+    } catch (e) {
+        showToast(e instanceof ApiError ? e.message : '잠시 후 다시 시도해 주세요');
+    } finally {
+        locBusy.value = false;
+    }
+}
+
 async function onScroll() {
     const el = listEl.value;
     if (!el || el.scrollTop > 20 || !hasOlder.value || !messages.value.length) return;
@@ -176,6 +217,9 @@ onBeforeUnmount(() => {
                 </span>
             </button>
             <span v-else class="who" />
+            <button v-if="room" class="icon" :class="{ sharing: myShare }" :aria-label="myShare ? '위치 공유 중 (설정)' : '내 위치 공유'" @click="locSheet = true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" :stroke="myShare ? '#1E8A55' : '#1F1B3A'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>
+            </button>
             <button v-if="room" class="icon" aria-label="더보기 (신고·차단)" @click="openReport">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="#1F1B3A" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
             </button>
@@ -199,7 +243,7 @@ onBeforeUnmount(() => {
                     <button class="av-btn" :aria-label="`${m.sender?.nickname ?? '상대'} 프로필 보기`" @click="openProfile(m.sender)">
                         <AvatarFace :parts="m.sender?.avatar" :size="32" variant="mini" />
                     </button>
-                    <MessageAttachment v-if="m.type !== 'text'" :message="m" />
+                    <MessageAttachment v-if="m.type !== 'text'" :message="m" :live="m.id === liveLocationId" />
                     <span v-else class="b">{{ m.body }}</span>
                 </div>
             </template>
@@ -220,12 +264,29 @@ onBeforeUnmount(() => {
             </button>
         </form>
 
+        <!-- 위치 공유 시트 -->
+        <div v-if="locSheet && room" class="dim" @click.self="locSheet = false">
+            <div class="sheet" role="dialog" aria-label="위치 공유">
+                <div class="grip" />
+                <h2 class="title" style="font-size: 19px">{{ room.user.nickname }}님에게 내 위치 공유</h2>
+                <p class="notice">켜면 {{ room.user.nickname }}님이 지도에서 <b>내 정확한 위치</b>를 볼 수 있어요. 앱을 열어 둔 동안만 갱신되고, 대화방에 위치 카드가 남아요.</p>
+                <p v-if="myShare" class="now">지금 공유 중 · {{ remainText(myShare.until) }}</p>
+                <div class="durs">
+                    <button class="dur" :disabled="locBusy" @click="shareLocation('1h')">1시간</button>
+                    <button class="dur" :disabled="locBusy" @click="shareLocation('today')">오늘</button>
+                    <button class="dur" :disabled="locBusy" @click="shareLocation('always')">계속</button>
+                </div>
+                <button v-if="myShare" class="off" :disabled="locBusy" @click="stopLocation">공유 끄기</button>
+                <button class="cancel" @click="locSheet = false">닫기</button>
+            </div>
+        </div>
+
         <AttachSheet v-if="attaching" allow-meetup @close="attaching = false" @image="sendImage" @meetup="shareMeetup" />
     </div>
 </template>
 
 <style scoped>
-.dm { height: 100%; display: flex; flex-direction: column; }
+.dm { height: 100%; display: flex; flex-direction: column; position: relative; }
 .sending { opacity: .6; }
 .head { display: flex; align-items: center; gap: 6px; padding: 14px 8px 8px; background: var(--c-surface); }
 .icon { width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -247,6 +308,17 @@ onBeforeUnmount(() => {
 .mine { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .mine .b { background: var(--c-primary); color: #fff; border-radius: 16px 4px 16px 16px; padding: 8px 12px; font-size: 14px; max-width: 240px; word-break: break-word; }
 .meta { font-size: 10px; color: var(--c-muted); }
+
+.icon.sharing { background: #E3F6EC; border-radius: 22px; }
+.dim { position: absolute; inset: 0; z-index: 30; background: rgba(31, 27, 58, .4); display: flex; align-items: flex-end; }
+.sheet { width: 100%; background: var(--c-surface); border-radius: 24px 24px 0 0; padding: 10px 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+.grip { width: 40px; height: 4px; border-radius: 2px; background: var(--c-line); margin: 0 auto 4px; }
+.notice { margin: 0; font-size: 13px; line-height: 1.5; color: var(--c-ink-2); background: var(--c-primary-soft); border-radius: 14px; padding: 10px 12px; }
+.now { margin: 0; font-size: 13px; font-weight: 700; color: var(--c-live-ink); }
+.durs { display: flex; gap: 8px; }
+.dur { flex: 1; height: 48px; border: 1.5px solid var(--c-primary-line); border-radius: 16px; background: var(--c-surface); color: var(--c-primary-deep); font-size: 15px; font-weight: 700; }
+.off { height: 48px; border: none; border-radius: 16px; background: #FDECEA; color: var(--c-danger); font-size: 15px; font-weight: 700; }
+.cancel { height: 44px; border: none; background: none; font-size: 15px; font-weight: 700; color: var(--c-ink-2); }
 
 .compose { display: flex; align-items: center; gap: 8px; padding: 10px 12px 24px; background: var(--c-surface); border-top: 1px solid var(--c-divider); }
 .plus, .send { width: 44px; height: 44px; border-radius: 22px; border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }

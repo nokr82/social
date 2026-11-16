@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Models\ChatMessage;
+use App\Models\ChatRoom;
+use App\Services\Location\LocationShareService;
 use App\Services\Chat\ChatAttachmentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -27,6 +29,23 @@ class ChatMessageResource extends JsonResource
             ]),
             // 번개 카드: 최신 상태 (지워졌으면 null → '사라진 번개')
             'meetup' => $this->when($this->type === ChatMessage::MEETUP, fn () => $attachments->meetupSummary($this->resource)),
+            // 위치 카드: 보낸 사람 → 대화 상대 공유가 지금도 유효한지 (좌표는 GET /api/location/friends로 따로 받음)
+            'location' => $this->when($this->type === ChatMessage::LOCATION, fn () => $this->locationCard()),
+        ];
+    }
+
+    /** @return array{sharer_id:int, active:bool, until:?string} */
+    private function locationCard(): array
+    {
+        $room = ChatRoom::find($this->room_id);
+        $share = $room?->type === ChatRoom::TYPE_DM
+            ? app(LocationShareService::class)->activeShare($this->sender_id, $room->otherMemberId($this->sender_id))
+            : null;
+
+        return [
+            'sharer_id' => $this->sender_id,
+            'active' => (bool) $share,
+            'until' => $share ? $share->expires_at?->toIso8601String() : ($this->meta['until'] ?? null),
         ];
     }
 }

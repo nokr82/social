@@ -13,6 +13,7 @@ class ChatMessage extends Model
     public const SYSTEM = 'system';
     public const IMAGE = 'image';     // meta {path, w, h}
     public const MEETUP = 'meetup';   // meta {meetup_id}
+    public const LOCATION = 'location'; // meta {until} — DM에서 위치 공유를 켰다는 카드 (좌표는 저장하지 않음)
 
     // DB 기본값과 동일 (create() 직후 응답에 type이 null로 나가지 않도록)
     protected $attributes = ['type' => self::TEXT];
@@ -35,6 +36,7 @@ class ChatMessage extends Model
         return match ($this->type) {
             self::IMAGE => '사진을 보냈어요',
             self::MEETUP => "번개를 공유했어요: {$this->body}",
+            self::LOCATION => '📍 위치를 공유했어요',
             default => $this->body,
         };
     }
