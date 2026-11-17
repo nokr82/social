@@ -16,7 +16,10 @@ class Plaza extends Model
     public const STATUS_CLOSED = 'closed';
 
     public const TYPE_USER = 'user'; // 주민이 만든 광장 (방장 있음, 닫힐 수 있음)
-    public const TYPE_TOWN = 'town'; // 동네 상시 광장 (법정동마다 1개, 방장 없음, 닫히지 않음)
+    public const TYPE_TOWN = 'town'; // 동네 상시 광장 (시·군·구마다 1개 + 전국 자유광장 1개, 방장 없음, 닫히지 않음)
+
+    /** 자유광장: 위치 없이 전국 누구나 들어오는 상시 광장. 동네 광장과 같은 구조를 쓰고 region_code만 다름 */
+    public const FREE_REGION = 'FREE';
 
     // DB 기본값과 같게: create() 직후 인스턴스에도 값이 채워지도록
     // (DB DEFAULT는 INSERT 후 모델에 다시 읽혀 오지 않는다)
@@ -46,7 +49,12 @@ class Plaza extends Model
         return $this->type === self::TYPE_TOWN;
     }
 
-    /** 방장이 유예시간 넘게 자리를 비웠나 (닫기 대상). 상시 광장은 방장이 없으니 해당 없음 */
+    public function isFree(): bool
+    {
+        return $this->isTown() && $this->region_code === self::FREE_REGION;
+    }
+
+    /** 방장이 host_grace(72시간) 넘게 한 번도 안 들어왔나 (위임·닫기 대상). 상시 광장은 방장이 없으니 해당 없음 */
     public function isHostGone(): bool
     {
         if ($this->isTown()) {

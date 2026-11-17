@@ -82,6 +82,40 @@ class TownService
         return [$town, $region];
     }
 
+    /**
+     * 자유광장: 위치 권한이 없어도 들어올 수 있는 전국 하나뿐인 상시 광장. 처음 부를 때 만든다.
+     * 좌표는 의미가 없어 (0,0) — 상시 광장은 주변 목록·검색에 안 나오므로 영향 없음.
+     */
+    public function free(): Plaza
+    {
+        $free = Plaza::where('region_code', Plaza::FREE_REGION)->first();
+        if ($free) {
+            return $free;
+        }
+        try {
+            return DB::transaction(function () {
+                $plaza = Plaza::create([
+                    'type' => Plaza::TYPE_TOWN,
+                    'region_code' => Plaza::FREE_REGION,
+                    'host_id' => null,
+                    'name' => '자유광장',
+                    'description' => '위치와 상관없이 전국 누구나 들어올 수 있어요',
+                    'category' => 'talk',
+                    'region_cell' => Geo::encode(0, 0, 7),
+                    'lat' => 0,
+                    'lng' => 0,
+                    'capacity' => $this->channelCapacity() * $this->maxChannels() * count($this->zones()),
+                ]);
+                ChatRoom::create(['type' => ChatRoom::TYPE_PLAZA, 'ref_id' => $plaza->id]);
+
+                return $plaza;
+            });
+        } catch (UniqueConstraintViolationException) {
+            // 첫 조회가 동시에 일어난 경우: 먼저 만든 쪽 (region_code UNIQUE)
+            return Plaza::where('region_code', Plaza::FREE_REGION)->firstOrFail();
+        }
+    }
+
     /* ---------------- 메인 카드 · 구역 현황 ---------------- */
 
     /**
@@ -127,6 +161,7 @@ class TownService
 
         return [
             'id' => $town->id,
+            'is_free' => $town->isFree(),
             'name' => $town->name,
             'description' => $town->description,
             'live_count' => array_sum(array_map('array_sum', $occupancy)),
@@ -181,13 +216,19 @@ class TownService
      *
      * @return array{zone: string, channel: int}
      */
-    public function enter(User $user, Plaza $town, ?string $zone = null, ?int $channel = null): array
+    /**
+     * @param  float|null  $lat,$lng  처음 들어올 때 내 동네인지 확인용 (저장 안 함). 자유광장·구역 이동엔 불필요
+     */
+    public function enter(User $user, Plaza $town, ?string $zone = null, ?int $channel = null, ?float $lat = null, ?float $lng = null): array
     {
         $this->assertTown($town);
-        $occupancy = $this->occupancy($town);
 
         $prev = $this->presence->current($user->id);
         $prevHere = $prev && str_starts_with($prev, "{$town->id}:") ? $prev : null;
+        if (! $prevHere) {
+            $this->assertMyTown($town, $lat, $lng); // 이미 안에서 구역·채널만 옮기는 경우는 검사 생략
+        }
+        $occupancy = $this->occupancy($town);
         [, $prevZone, $prevCh] = $prevHere ? explode(':', $prevHere) + [null, null, null] : [null, null, null];
 
         if ($zone === null) {
@@ -331,6 +372,23 @@ class TownService
         $this->assertChannel($channel);
 
         return $this->space($town, $zone, $channel);
+    }
+
+    /**
+     * 동네 광장은 그 동네 사람만. 번호만 알면 다른 구 광장에 들어가던 빈틈을 막는다.
+     * 자유광장은 누구나. 위치 권한이 없으면(좌표 없음) 동네 광장엔 못 들어옴 → 자유광장 안내
+     */
+    private function assertMyTown(Plaza $town, ?float $lat, ?float $lng): void
+    {
+        if ($town->isFree()) {
+            return;
+        }
+        if ($lat === null || $lng === null) {
+            throw new DomainException('LOCATION_REQUIRED', '위치 권한을 켜야 동네 광장에 들어갈 수 있어요. 자유광장은 누구나 들어올 수 있어요', 403);
+        }
+        if ($this->regions->resolve($lat, $lng)?->code !== $town->region_code) {
+            throw new DomainException('NOT_MY_TOWN', '우리 동네 광장에만 들어갈 수 있어요', 403);
+        }
     }
 
     private function assertTown(Plaza $plaza): void

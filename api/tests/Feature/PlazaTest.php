@@ -6,6 +6,8 @@ use App\Events\PlazaClosed;
 use App\Events\PlazaHostChanged;
 use App\Models\Block;
 use App\Models\Plaza;
+use App\Models\PlazaKick;
+use App\Models\PlazaMember;
 use App\Models\User;
 use App\Services\Plaza\PlazaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -53,7 +55,7 @@ class PlazaTest extends TestCase
 
         // far 광장에 2명 접속 → hot은 far
         foreach (User::factory()->count(2)->complete()->create() as $u) {
-            app(PlazaService::class)->enter($u, $far);
+            app(PlazaService::class)->enter($u, $far, $far->lat, $far->lng);
         }
 
         $res = $this->actingAs($host)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)->assertOk();
@@ -78,6 +80,124 @@ class PlazaTest extends TestCase
         $this->actingAs($host)->getJson("/api/plazas{$q}&q=운동")->assertJsonCount(1, 'data'); // 카테고리 라벨 검색
     }
 
+    public function test_search_requires_every_word(): void
+    {
+        // 방장 한 명당 광장 3개 제한이 있어 방마다 다른 방장
+        $match = $this->makePlaza(User::factory()->complete()->create(), ['name' => '강남역 러닝크루', 'category' => 'sports']);
+        $this->makePlaza(User::factory()->complete()->create(), ['name' => '강남 수다방']);
+        $this->makePlaza(User::factory()->complete()->create(), ['name' => '역삼 러닝', 'category' => 'sports']);
+        $me = User::factory()->complete()->create();
+        $q = '?lat='.self::LAT.'&lng='.self::LNG;
+
+        // 두 단어가 모두 들어간 방만 (사이에 글자가 껴도 됨, 여러 칸 띄어쓰기도 같음)
+        $res = $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('강남  러닝'))->assertOk();
+        $this->assertSame([$match->id], array_column($res->json('data'), 'id'));
+
+        // 설명에 있는 단어도 찾음
+        $desc = $this->makePlaza(User::factory()->complete()->create(), ['name' => '저녁 모임', 'description' => '강남에서 러닝해요']);
+        $res = $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('강남 러닝'))->assertOk();
+        $this->assertEqualsCanonicalizing([$match->id, $desc->id], array_column($res->json('data'), 'id'));
+
+        // LIKE 와일드카드는 글자로 취급: '%'로 모든 방이 걸리면 안 됨
+        $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('%'))->assertJsonCount(0, 'data');
+    }
+
+    public function test_search_matches_part_of_category_label(): void
+    {
+        $sports = $this->makePlaza(User::factory()->complete()->create(), ['name' => '아침 모임', 'category' => 'sports']);
+        $this->makePlaza(User::factory()->complete()->create(), ['name' => '저녁 모임', 'category' => 'talk']);
+        $me = User::factory()->complete()->create();
+        $q = '?lat='.self::LAT.'&lng='.self::LNG;
+
+        // '운' → 운동 카테고리
+        $res = $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('운'))->assertOk();
+        $this->assertSame([$sports->id], array_column($res->json('data'), 'id'));
+        // 단어마다 따로 걸러짐: '운동 저녁' = 운동 카테고리이면서 '저녁'도 있어야 함 → 둘 다 갖춘 방 없음
+        $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('운동 저녁'))->assertJsonCount(0, 'data');
+        // 해당 카테고리 방이 없으면 0개
+        $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('스터'))->assertJsonCount(0, 'data');
+    }
+
+    public function test_search_still_hides_blocked_kicked_and_closed(): void
+    {
+        $me = User::factory()->complete()->create();
+        $blocker = User::factory()->complete()->create();
+        $this->makePlaza($blocker, ['name' => '러닝 A']);
+        Block::create(['blocker_id' => $blocker->id, 'blocked_id' => $me->id]);   // 방장이 나를 차단
+
+        $kicked = $this->makePlaza(User::factory()->complete()->create(), ['name' => '러닝 B']);
+        PlazaKick::create(['plaza_id' => $kicked->id, 'user_id' => $me->id, 'kicked_by' => $kicked->host_id, 'reason' => 'spam']);
+
+        $closed = $this->makePlaza(User::factory()->complete()->create(), ['name' => '러닝 C']);
+        $closed->update(['status' => Plaza::STATUS_CLOSED, 'closed_at' => now()]);
+
+        $ok = $this->makePlaza(User::factory()->complete()->create(), ['name' => '러닝 D']);
+
+        $res = $this->actingAs($me)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG.'&q='.urlencode('러닝'))->assertOk();
+        $this->assertSame([$ok->id], array_column($res->json('data'), 'id'));
+    }
+
+    public function test_search_finds_plazas_anywhere_but_list_is_nearby(): void
+    {
+        $near = $this->makePlaza(User::factory()->complete()->create(), ['name' => '역삼 러닝', 'category' => 'sports']);
+        $busan = $this->makePlaza(User::factory()->complete()->create(), ['name' => '해운대 러닝', 'category' => 'sports'], 35.1587, 129.1604);
+        $me = User::factory()->complete()->create();
+        $q = '?lat='.self::LAT.'&lng='.self::LNG;
+
+        // 기본 목록(검색 없음)은 5km 안만
+        $res = $this->actingAs($me)->getJson("/api/plazas{$q}")->assertOk();
+        $this->assertSame([$near->id], array_column($res->json('data'), 'id'));
+
+        // 검색은 전국, 가까운 순. 5km 밖은 can_enter=false + 대략 구간만
+        $res = $this->actingAs($me)->getJson("/api/plazas{$q}&q=".urlencode('러닝'))->assertOk();
+        $this->assertSame([$near->id, $busan->id], array_column($res->json('data'), 'id'));
+        $this->assertTrue($res->json('data.0.can_enter'));
+        $this->assertFalse($res->json('data.1.can_enter'));
+        $this->assertSame('30km 이상', $res->json('data.1.distance_label'));
+
+        // 카테고리만 골라도 '찾기' → 전국
+        $this->actingAs($me)->getJson("/api/plazas{$q}&category=sports")->assertJsonCount(2, 'data');
+    }
+
+    public function test_search_without_location(): void
+    {
+        $this->makePlaza(User::factory()->complete()->create(), ['name' => '러닝크루', 'category' => 'sports']);
+        $me = User::factory()->complete()->create();
+
+        // 위치 권한 없음: 검색은 되지만 들어갈 수 있는지는 모름(null)
+        $res = $this->actingAs($me)->getJson('/api/plazas?q='.urlencode('러닝'))->assertOk()->assertJsonCount(1, 'data');
+        $this->assertNull($res->json('data.0.can_enter'));
+        $this->assertNull($res->json('data.0.distance_label'));
+        // 위치 없이 '내 주변' 목록은 빈 목록
+        $this->actingAs($me)->getJson('/api/plazas')->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    public function test_enter_requires_location_within_radius(): void
+    {
+        $host = User::factory()->complete()->create();
+        $busan = $this->makePlaza($host, ['name' => '해운대'], 35.1587, 129.1604);
+        $me = User::factory()->complete()->create();
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+
+        // 멀면 거절, 위치 없으면 거절
+        $this->actingAs($me)->postJson("/api/plazas/{$busan->id}/enter", $here)
+            ->assertForbidden()->assertJsonPath('code', 'OUT_OF_RANGE');
+        $this->actingAs($me)->postJson("/api/plazas/{$busan->id}/enter")
+            ->assertForbidden()->assertJsonPath('code', 'LOCATION_REQUIRED');
+        // 좌표 반쪽만은 검증 오류
+        $this->actingAs($me)->postJson("/api/plazas/{$busan->id}/enter", ['lat' => 35.1587])->assertUnprocessable();
+
+        // 근처에서는 들어감
+        $atBusan = ['lat' => 35.1590, 'lng' => 129.1600];
+        $this->actingAs($me)->postJson("/api/plazas/{$busan->id}/enter", $atBusan)->assertOk();
+        // 이미 안에 있으면 좌표 없이 재입장(재연결) 가능 → 광장 안에서 움직여도 안 쫓겨남
+        $this->actingAs($me)->postJson("/api/plazas/{$busan->id}/enter")->assertOk();
+
+        // 방장은 거리와 상관없이 자기 광장에 들어감
+        app(\App\Services\Plaza\PlazaService::class)->leave($host, $busan);
+        $this->actingAs($host)->postJson("/api/plazas/{$busan->id}/enter", $here)->assertOk();
+    }
+
     public function test_blocked_hosts_plaza_is_hidden_both_ways(): void
     {
         $host = User::factory()->complete()->create();
@@ -93,10 +213,10 @@ class PlazaTest extends TestCase
         $plaza = $this->makePlaza(User::factory()->complete()->create(), ['capacity' => 2]);
         [$a, $b] = User::factory()->count(2)->complete()->create();
 
-        $this->actingAs($a)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
-        $this->actingAs($b)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($a)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
+        $this->actingAs($b)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
         $c = User::factory()->complete()->create();
-        $this->actingAs($c)->postJson("/api/plazas/{$plaza->id}/enter")->assertStatus(409)->assertJson(['code' => 'PLAZA_FULL']);
+        $this->actingAs($c)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertStatus(409)->assertJson(['code' => 'PLAZA_FULL']);
     }
 
     public function test_chat_requires_entry_and_hides_blocked_senders(): void
@@ -108,7 +228,7 @@ class PlazaTest extends TestCase
             ->assertForbidden()->assertJson(['code' => 'NOT_IN_PLAZA']);
 
         foreach ([$me, $other, $troll] as $u) {
-            $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+            $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
             $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/messages", ['body' => "hi {$u->nickname}"])
                 ->assertCreated()
                 ->assertJsonPath('data.sender.id', $u->id)
@@ -133,7 +253,7 @@ class PlazaTest extends TestCase
         $new = $this->makePlaza($host, ['name' => '새것'], 37.5030, 127.0420);
 
         foreach (User::factory()->count(3)->complete()->create() as $u) {
-            app(PlazaService::class)->enter($u, $busy);
+            app(PlazaService::class)->enter($u, $busy, $busy->lat, $busy->lng);
         }
         $q = '?lat='.self::LAT.'&lng='.self::LNG;
 
@@ -147,14 +267,14 @@ class PlazaTest extends TestCase
     {
         $host = User::factory()->complete()->create();
         $plaza = $this->makePlaza($host);
-        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter");
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG]);
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/messages", ['body' => '한판 ㄱ?'])->assertCreated();
 
         $this->actingAs($host)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
             ->assertJsonPath('data.0.last_message', '한판 ㄱ?');
 
         $this->travel(11)->minutes(); // 10분 지나면 말풍선 숨김
-        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk(); // 방장 부재로 숨겨지지 않게
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk(); // 방장 부재로 숨겨지지 않게
         $this->actingAs($host)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
             ->assertJsonPath('data.0.last_message', null);
     }
@@ -169,16 +289,17 @@ class PlazaTest extends TestCase
         ])->assertForbidden()->assertJson(['code' => 'LOW_TRUST']);
     }
 
-    /* ---------------- 방장이 나가면 광장 닫힘 ---------------- */
+    /* ---------------- 방장이 72시간 안 오면 위임·닫힘 ---------------- */
 
+    /** 방장이 host_grace(72시간) 동안 안 들어오고, 넘길 사람(자격 있는 참여자)도 없으면 닫힘 */
     public function test_plaza_closes_when_host_leaves_and_does_not_return(): void
     {
         Event::fake([PlazaClosed::class]);
         $host = User::factory()->complete()->create();
-        $guest = User::factory()->complete()->create();
+        $guest = $this->userWithScore(100); // 방장 자격 미달 → 위임 대상 없음
         $plaza = $this->makePlaza($host);
-        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
-        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
+        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
 
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/leave")->assertOk();
         $this->travel(config('social.plaza.host_grace') + 1)->seconds();
@@ -197,19 +318,22 @@ class PlazaTest extends TestCase
         // 명령을 다시 돌려도 중복으로 닫거나 알리지 않음
         $this->artisan('plazas:close-abandoned')->assertSuccessful();
         Event::assertDispatchedTimes(PlazaClosed::class, 1);
+
+        // 닫힌 광장의 참여는 정리 → 채팅 탭 목록에서 빠짐
+        $this->assertSame(0, PlazaMember::where('plaza_id', $plaza->id)->count());
     }
 
-    /** 프로필 보기·새로고침처럼 잠깐 나갔다 오면 유지 */
+    /** 72시간 안에 한 번이라도 들어오면 유지 */
     public function test_host_returning_within_grace_keeps_plaza_open(): void
     {
         $host = User::factory()->complete()->create();
         $plaza = $this->makePlaza($host);
-        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
 
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/leave")->assertOk();
         $this->travel(config('social.plaza.host_grace') - 30)->seconds();
-        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
-        $this->travel(60)->seconds(); // 나간 시점 기준으론 유예시간 초과지만, 돌아왔으니 유지
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
+        $this->travel(60)->seconds(); // 처음 나간 시점 기준으론 72시간 초과지만, 중간에 들어왔으니 유지
 
         $this->artisan('plazas:close-abandoned')->assertSuccessful();
         $this->assertSame(Plaza::STATUS_OPEN, $plaza->fresh()->status);
@@ -220,7 +344,7 @@ class PlazaTest extends TestCase
     {
         $host = User::factory()->complete()->create();
         $plaza = $this->makePlaza($host);
-        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
 
         for ($i = 0; $i < 10; $i++) { // 5분 동안 30초마다
             $this->travel(30)->seconds();
@@ -240,7 +364,7 @@ class PlazaTest extends TestCase
         $this->travel(config('social.plaza.host_grace') + 1)->seconds();
 
         $guest = User::factory()->complete()->create();
-        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/enter")
+        $this->actingAs($guest)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])
             ->assertStatus(410)->assertJson(['code' => 'PLAZA_CLOSED']);
         $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
         Event::assertDispatched(PlazaClosed::class);
@@ -262,18 +386,12 @@ class PlazaTest extends TestCase
     /* ---------------- 방장 위임 ---------------- */
 
     /**
-     * 방장이 나간 채 유예시간이 지나는 동안 손님들은 30초마다 heartbeat로 광장에 머문다.
-     * (presence TTL 60초라 heartbeat 없이 시간만 넘기면 접속자도 사라짐)
+     * 방장 부재 확정까지 시간 보내기. 손님들은 접속(presence)이 끊겨도 참여(plaza_members)는 남아 있어
+     * 위임 후보가 된다 — 전에는 heartbeat로 접속을 유지해야 후보였음.
      */
     private function stayUntilHostGone(Plaza $plaza, array $guests): void
     {
-        for ($i = 0; $i < 5; $i++) { // 150초: 아직 유예시간(180초) 안
-            $this->travel(30)->seconds();
-            foreach ($guests as $g) {
-                $this->actingAs($g)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
-            }
-        }
-        $this->travel(40)->seconds(); // 190초: 방장 부재 확정, 손님들은 아직 접속 중(마지막 heartbeat 40초 전)
+        $this->travel(config('social.plaza.host_grace') + 1)->seconds();
     }
 
     private function userWithScore(int $score): User
@@ -294,17 +412,13 @@ class PlazaTest extends TestCase
         $mid = $this->userWithScore(500);   // ← 위임 대상
         $busy = $this->userWithScore(900);  // 점수는 제일 높지만 이미 광장 3개 운영 → 제외
         foreach ([$low, $mid, $busy] as $u) {
-            $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+            $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
         }
         $this->stayUntilHostGone($plaza, [$low, $mid, $busy]);
         // busy가 운영 중인 광장 3개 (방장 부재로 안 세지도록 위임 직전에 만듦)
         for ($i = 0; $i < config('social.plaza.max_open_per_host'); $i++) {
             $this->makePlaza($busy, ['name' => "운영중{$i}"]);
         }
-
-        // 방장은 없지만 사람이 있어 곧 위임될 방 → 목록에 그대로 보임
-        $listed = array_column($this->actingAs($low)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)->json('data'), 'id');
-        $this->assertContains($plaza->id, $listed);
 
         $this->artisan('plazas:close-abandoned')->assertSuccessful();
 
@@ -314,27 +428,23 @@ class PlazaTest extends TestCase
         Event::assertDispatched(PlazaHostChanged::class, fn ($e) => $e->plazaId === $plaza->id && $e->host['id'] === $mid->id);
         Event::assertNotDispatched(PlazaClosed::class);
 
-        // 새 방장이 광장에 있는 동안은 유지 (heartbeat가 host_seen_at 갱신)
-        $this->actingAs($mid)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
+        // 새 방장이 들어오면 유지 (참여자라 좌표 없이 재입장, host_seen_at 갱신)
+        $this->actingAs($mid)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
         $this->actingAs($mid)->getJson("/api/plazas/{$plaza->id}")->assertJsonPath('data.is_host', true);
         $this->artisan('plazas:close-abandoned')->assertSuccessful();
         Event::assertDispatchedTimes(PlazaHostChanged::class, 1); // 중복 위임 없음
     }
 
-    /** 자격 있는 사람이 없으면 닫힘. 정리 명령 전이라도 손님 heartbeat에서 바로 처리 */
+    /** 자격 있는 참여자가 없으면 닫힘. 정리 명령 전이라도 손님 요청에서 바로 처리 */
     public function test_plaza_closes_when_no_eligible_member(): void
     {
         Event::fake([PlazaHostChanged::class, PlazaClosed::class]);
         $host = User::factory()->complete()->create();
         $plaza = $this->makePlaza($host);
         $low = $this->userWithScore(100);
-        $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
 
-        for ($i = 0; $i < 5; $i++) {
-            $this->travel(30)->seconds();
-            $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/heartbeat")->assertOk();
-        }
-        $this->travel(40)->seconds();
+        $this->travel(config('social.plaza.host_grace') + 1)->seconds();
 
         $this->actingAs($low)->postJson("/api/plazas/{$plaza->id}/heartbeat")
             ->assertStatus(410)->assertJson(['code' => 'PLAZA_CLOSED']);
@@ -350,7 +460,7 @@ class PlazaTest extends TestCase
         $host = User::factory()->complete()->create();
         $plaza = $this->makePlaza($host);
         $member = $this->userWithScore(900);
-        $this->actingAs($member)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($member)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
         $this->stayUntilHostGone($plaza, [$member]);
 
         $member->forceFill(['status' => 'suspended'])->save(); // 접속 중에 정지됨
@@ -358,5 +468,132 @@ class PlazaTest extends TestCase
         $this->artisan('plazas:close-abandoned')->assertSuccessful();
         $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
         Event::assertNotDispatched(PlazaHostChanged::class);
+    }
+
+    /* ---------------- 참여 유지 · 나가기 · 채팅 탭 광장 ---------------- */
+
+    private function joinedIds(User $u): array
+    {
+        return array_column($this->actingAs($u)->getJson('/api/me/plazas')->assertOk()->json('data'), 'plaza.id');
+    }
+
+    /** 화면을 떠나도(leave) 참여 유지, 나가기(quit)를 눌러야 빠짐. 참여 중이면 어디서든 다시 들어옴 */
+    public function test_membership_persists_until_quit(): void
+    {
+        $plaza = $this->makePlaza(User::factory()->complete()->create());
+        $me = User::factory()->complete()->create();
+        $url = "/api/plazas/{$plaza->id}";
+
+        $this->actingAs($me)->postJson("{$url}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
+        $this->actingAs($me)->postJson("{$url}/leave")->assertOk();
+        $this->travel(2)->days();
+        $this->assertSame([$plaza->id], $this->joinedIds($me));
+
+        // 멀리(부산) 있어도 참여자는 다시 들어옴
+        $this->actingAs($me)->postJson("{$url}/enter", ['lat' => 35.1587, 'lng' => 129.1604])->assertOk();
+
+        // 나가기 → 목록에서 빠지고, 다시 들어오려면 거리 검사부터
+        $this->actingAs($me)->postJson("{$url}/quit")->assertOk();
+        $this->actingAs($me)->postJson("{$url}/quit")->assertOk(); // 두 번 눌러도 안전
+        $this->assertSame([], $this->joinedIds($me));
+        $this->actingAs($me)->postJson("{$url}/enter", ['lat' => 35.1587, 'lng' => 129.1604])
+            ->assertForbidden()->assertJsonPath('code', 'OUT_OF_RANGE');
+    }
+
+    /** 정원은 참여자 수: 화면을 떠난 참여자도 자리를 차지, 나가기 하면 자리가 남 */
+    public function test_capacity_counts_members(): void
+    {
+        $plaza = $this->makePlaza(User::factory()->complete()->create(), ['capacity' => 2]);
+        [$a, $b, $c] = User::factory()->count(3)->complete()->create();
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+        $url = "/api/plazas/{$plaza->id}";
+
+        $this->actingAs($a)->postJson("{$url}/enter", $here)->assertOk();
+        $this->actingAs($b)->postJson("{$url}/enter", $here)->assertOk();
+        $this->actingAs($a)->postJson("{$url}/leave")->assertOk(); // 화면만 떠남
+        $this->actingAs($c)->postJson("{$url}/enter", $here)->assertStatus(409)->assertJsonPath('code', 'PLAZA_FULL');
+
+        $this->actingAs($a)->postJson("{$url}/quit")->assertOk();
+        $this->actingAs($c)->postJson("{$url}/enter", $here)->assertOk();
+    }
+
+    public function test_join_limit(): void
+    {
+        config(['social.plaza.max_joined' => 2]);
+        $me = User::factory()->complete()->create();
+        $plazas = collect(range(1, 3))->map(fn ($i) => $this->makePlaza(User::factory()->complete()->create(), ['name' => "방{$i}"]));
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+
+        $this->actingAs($me)->postJson("/api/plazas/{$plazas[0]->id}/enter", $here)->assertOk();
+        $this->actingAs($me)->postJson("/api/plazas/{$plazas[1]->id}/enter", $here)->assertOk();
+        $this->actingAs($me)->postJson("/api/plazas/{$plazas[2]->id}/enter", $here)
+            ->assertStatus(409)->assertJsonPath('code', 'TOO_MANY_JOINED');
+
+        // 닫힌 광장은 세지 않음
+        app(PlazaService::class)->close($plazas[0], 'host_closed');
+        $this->actingAs($me)->postJson("/api/plazas/{$plazas[2]->id}/enter", $here)->assertOk();
+    }
+
+    /** 방장이 나가기 → 기다리지 않고 바로 자격 있는 참여자에게 위임, 없으면 닫힘 */
+    public function test_host_quit_hands_over_immediately(): void
+    {
+        Event::fake([PlazaHostChanged::class, PlazaClosed::class]);
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", $here)->assertOk();
+        $next = $this->userWithScore(600);
+        $this->actingAs($next)->postJson("/api/plazas/{$plaza->id}/enter", $here)->assertOk();
+        $this->actingAs($next)->postJson("/api/plazas/{$plaza->id}/leave")->assertOk(); // 접속 안 해도 참여자면 후보
+
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/quit")->assertOk();
+        $this->assertSame($next->id, (int) $plaza->fresh()->host_id);
+        Event::assertDispatched(PlazaHostChanged::class, fn ($e) => $e->host['id'] === $next->id);
+        $this->assertSame([], $this->joinedIds($host));
+
+        // 새 방장도 나가면 남은 사람이 없어 닫힘
+        $this->actingAs($next)->postJson("/api/plazas/{$plaza->id}/quit")->assertOk();
+        $this->assertSame(Plaza::STATUS_CLOSED, $plaza->fresh()->status);
+        Event::assertDispatched(PlazaClosed::class, fn ($e) => $e->reason === 'host_left');
+    }
+
+    /** 채팅 탭 '광장': 안 읽은 수(내 메시지·차단 상대 제외), 읽음 처리, 강퇴되면 목록에서 빠짐 */
+    public function test_joined_list_unread_and_read(): void
+    {
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        [$me, $friend, $troll] = User::factory()->count(3)->complete()->create();
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+        $url = "/api/plazas/{$plaza->id}";
+
+        $this->actingAs($host)->postJson("{$url}/enter", $here)->assertOk();
+        $this->actingAs($host)->postJson("{$url}/messages", ['body' => '참여 전 대화'])->assertCreated();
+        foreach ([$me, $friend, $troll] as $u) {
+            $this->actingAs($u)->postJson("{$url}/enter", $here)->assertOk();
+        }
+        Block::create(['blocker_id' => $me->id, 'blocked_id' => $troll->id]);
+        $this->actingAs($me)->postJson("{$url}/leave")->assertOk();
+
+        $this->actingAs($friend)->postJson("{$url}/messages", ['body' => '하나'])->assertCreated();
+        $lastId = $this->actingAs($friend)->postJson("{$url}/messages", ['body' => '둘'])->json('data.id');
+        $this->actingAs($troll)->postJson("{$url}/messages", ['body' => '차단된 말'])->assertCreated();
+
+        // 참여 전 대화·차단 상대 말은 안 셈
+        $res = $this->actingAs($me)->getJson('/api/me/plazas')->assertOk();
+        $this->assertSame(2, $res->json('data.0.unread'));
+        $this->assertSame(2, $res->json('unread_total'));
+        $this->assertSame('둘', $res->json('data.0.last_message.body'));
+        $this->assertSame(4, $res->json('data.0.member_count'));
+
+        $this->actingAs($me)->postJson("{$url}/read", ['last_id' => $lastId])->assertOk();
+        $this->actingAs($me)->postJson("{$url}/read", ['last_id' => 1])->assertOk(); // 뒤로는 안 감
+        $this->actingAs($me)->postJson("{$url}/read", ['last_id' => 999999])->assertOk(); // 마지막 메시지보다 앞으로도 안 감
+        $this->assertSame(0, $this->actingAs($me)->getJson('/api/me/plazas')->json('data.0.unread'));
+        $this->actingAs($host)->postJson("{$url}/messages", ['body' => '셋'])->assertCreated();
+        $this->assertSame(1, $this->actingAs($me)->getJson('/api/me/plazas')->json('data.0.unread'));
+
+        // 강퇴되면 참여에서 빠짐
+        $this->actingAs($host)->postJson("{$url}/kick", ['user_id' => $me->id, 'reason' => 'spam'])->assertOk();
+        $this->assertSame([], $this->joinedIds($me));
     }
 }

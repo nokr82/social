@@ -35,20 +35,32 @@ class TownController extends Controller
         return response()->json(['data' => $this->town->summary($request->user(), $plaza) + ['region_name' => $region->name]]);
     }
 
+    /** GET /api/free-plaza — 자유광장 카드 (위치 없이 누구나). 형식은 /town과 같고 region_name 없음 */
+    public function free(Request $request): JsonResponse
+    {
+        return response()->json(['data' => $this->town->summary($request->user(), $this->town->free())]);
+    }
+
     /** GET /api/plazas/{plaza}/town — 구역 지도·채널 현황 */
     public function show(Plaza $plaza): JsonResponse
     {
         return response()->json(['data' => $this->town->state($plaza)]);
     }
 
-    /** POST /api/plazas/{plaza}/town/enter {zone?, channel?} — 입장·구역 이동·채널 이동 */
+    /** POST /api/plazas/{plaza}/town/enter {zone?, channel?, lat?, lng?} — 입장·구역 이동·채널 이동. 동네 광장 첫 입장은 좌표 필수(내 동네만) */
     public function enter(Request $request, Plaza $plaza): JsonResponse
     {
         $data = $request->validate([
             'zone' => ['nullable', 'string', Rule::in(array_keys(config('social.town.zones')))],
             'channel' => ['nullable', 'integer', 'min:1', 'max:'.config('social.town.max_channels')],
+            'lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:lng'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat'],
         ]);
-        $at = $this->town->enter($request->user(), $plaza, $data['zone'] ?? null, isset($data['channel']) ? (int) $data['channel'] : null);
+        $at = $this->town->enter(
+            $request->user(), $plaza,
+            $data['zone'] ?? null, isset($data['channel']) ? (int) $data['channel'] : null,
+            isset($data['lat']) ? (float) $data['lat'] : null, isset($data['lng']) ? (float) $data['lng'] : null,
+        );
 
         return response()->json($at + [
             'presence_channel' => "town.{$plaza->id}.{$at['zone']}.{$at['channel']}",

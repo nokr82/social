@@ -1,7 +1,8 @@
 <script setup>
 /**
  * 채팅 탭 (디자인: ChatTab.dc.html)
- * [대화] 친구와의 1:1 대화 목록 (번개 채팅방은 번개 기능과 함께 추가)
+ * [광장] 내가 참여 중인 주민 광장 (나가기 전까지 유지) — 마지막 대화·안 읽은 수·접속자 수. 20초마다 갱신
+ * [대화] 친구와의 1:1 대화 목록 + 번개 채팅방
  * [친구] 검색 · 받은 요청 · 접속 상태 · 성별·나이 · 대화 버튼
  * 새 메시지는 내 개인 채널로 받아 목록·배지를 바로 갱신한다.
  */
@@ -14,6 +15,7 @@ import { ApiError, get } from '../lib/api';
 import { auth } from '../lib/auth';
 import { openDm } from '../lib/dm';
 import { connectEcho } from '../lib/echo';
+import { CATEGORY_GROUND } from '../lib/avatar';
 import { previewOf } from '../lib/chatAttach';
 import { ago, genderAge, presenceText } from '../lib/time';
 import { showToast } from '../lib/toast';
@@ -21,8 +23,12 @@ import { showToast } from '../lib/toast';
 const route = useRoute();
 const router = useRouter();
 
-const tab = ref(route.query.tab === 'friends' ? 'friends' : 'chats');
+const TABS = ['plazas', 'chats', 'friends'];
+const tab = ref(TABS.includes(route.query.tab) ? route.query.tab : 'chats');
 const chats = ref([]);
+const plazaRooms = ref([]);    // 참여 중인 광장
+const plazaUnread = ref(0);
+let plazaTimer = null;
 const meetupRooms = ref([]);   // 번개 채팅방 (상단 고정)
 const friends = ref([]);
 const receivedCount = ref(0);
@@ -40,8 +46,10 @@ async function load() {
     loading.value = true;
     try {
         if (!auth.me) auth.me = (await get('/me')).data;
-        const [c, f, mt] = await Promise.all([get('/chats'), get('/friends'), get('/meetups/mine')]);
+        const [c, f, mt, pl] = await Promise.all([get('/chats'), get('/friends'), get('/meetups/mine'), get('/me/plazas')]);
         meetupRooms.value = mt.data;
+        plazaRooms.value = pl.data;
+        plazaUnread.value = pl.unread_total;
         chats.value = c.data;
         friends.value = f.data;
         receivedCount.value = auth.me.stats?.received_requests ?? 0;
@@ -50,6 +58,15 @@ async function load() {
     } finally {
         loading.value = false;
     }
+}
+
+/** 광장 목록만 다시 (광장 대화는 개인 채널로 안 오므로 주기적으로) */
+async function loadPlazas() {
+    try {
+        const pl = await get('/me/plazas');
+        plazaRooms.value = pl.data;
+        plazaUnread.value = pl.unread_total;
+    } catch { /* 다음 주기에 다시 */ }
 }
 
 /** 새 DM이 오면 해당 대화를 맨 위로 올리고 안 읽은 수 +1 */
@@ -62,17 +79,21 @@ function onIncoming(msg) {
     chats.value.unshift(chat);
 }
 
-watch(tab, (t) => router.replace({ query: t === 'friends' ? { tab: 'friends' } : {} }));
+watch(tab, (t) => router.replace({ query: t === 'chats' ? {} : { tab: t } }));
 
 onMounted(async () => {
     await load();
+    plazaTimer = setInterval(loadPlazas, 20_000);
     if (auth.me) {
         channelName = `App.Models.User.${auth.me.id}`;
         connectEcho().private(channelName).listen('.dm.sent', onIncoming);
     }
 });
 // 개인 채널은 알림(lib/notify.js)도 같이 쓰므로 leave 금지 → 이 화면의 이벤트만 해제
-onBeforeUnmount(() => channelName && window.Echo?.private(channelName).stopListening('.dm.sent', onIncoming));
+onBeforeUnmount(() => {
+    clearInterval(plazaTimer);
+    if (channelName) window.Echo?.private(channelName).stopListening('.dm.sent', onIncoming);
+});
 </script>
 
 <template>
@@ -88,13 +109,44 @@ onBeforeUnmount(() => channelName && window.Echo?.private(channelName).stopListe
         </div>
 
         <div class="tabs" role="tablist" aria-label="채팅 보기">
+            <button role="tab" :aria-selected="tab === 'plazas'" :class="{ on: tab === 'plazas' }" @click="tab = 'plazas'">
+                광장<span v-if="plazaUnread" class="tab-dot" :aria-label="`안 읽은 메시지 ${plazaUnread}개`">{{ plazaUnread > 99 ? '99+' : plazaUnread }}</span>
+            </button>
             <button role="tab" :aria-selected="tab === 'chats'" :class="{ on: tab === 'chats' }" @click="tab = 'chats'">대화</button>
             <button role="tab" :aria-selected="tab === 'friends'" :class="{ on: tab === 'friends' }" @click="tab = 'friends'">친구 {{ friends.length }}</button>
         </div>
 
         <div class="body scroll">
+            <!-- 참여 중인 광장 -->
+            <template v-if="tab === 'plazas'">
+                <section class="sec">
+                    <h2>참여 중인 광장 {{ plazaRooms.length }}</h2>
+                    <div v-if="plazaRooms.length" class="list">
+                        <button v-for="r in plazaRooms" :key="r.plaza.id" class="row" @click="router.push({ name: 'plaza', params: { id: r.plaza.id } })">
+                            <span class="plaza-ic" :style="{ background: CATEGORY_GROUND[r.plaza.category] ?? '#E9E4FF' }" aria-hidden="true">
+                                <AvatarFace v-if="r.plaza.preview_avatars[0]" :parts="r.plaza.preview_avatars[0]" :size="30" variant="mini" />
+                            </span>
+                            <span class="col">
+                                <span class="name">
+                                    <b>{{ r.plaza.name }}</b>
+                                    <span v-if="r.plaza.is_host" class="ga">👑 방장</span>
+                                </span>
+                                <span class="last">{{ r.last_message ? `${r.last_message.mine ? '나' : r.last_message.sender}: ${r.last_message.body}` : '아직 대화가 없어요' }}</span>
+                                <small>{{ r.plaza.category_label }} · 참여 {{ r.member_count }}명 · <span :class="{ live: r.plaza.live_count }">지금 {{ r.plaza.live_count }}명</span></small>
+                            </span>
+                            <span class="side">
+                                <small v-if="r.last_message">{{ ago(r.last_message.created_at) }}</small>
+                                <span v-if="r.unread" class="badge">{{ r.unread > 99 ? '99+' : r.unread }}</span>
+                            </span>
+                        </button>
+                    </div>
+                    <p v-else-if="!loading" class="empty">참여 중인 광장이 없어요.<br>메인에서 광장에 들어가면 여기에 계속 남아요.</p>
+                    <span class="note">광장 안 참여자 목록에서 '광장 나가기'를 누르면 목록에서 빠져요</span>
+                </section>
+            </template>
+
             <!-- 대화 목록 -->
-            <template v-if="tab === 'chats'">
+            <template v-else-if="tab === 'chats'">
                 <section v-if="meetupRooms.length" class="sec">
                     <h2>번개 채팅방</h2>
                     <button v-for="m in meetupRooms" :key="m.id" class="plain" @click="router.push({ name: 'meetup-room', params: { id: m.id } })">
@@ -176,7 +228,7 @@ onBeforeUnmount(() => channelName && window.Echo?.private(channelName).stopListe
 .chat-tab { height: 100%; display: flex; flex-direction: column; position: relative; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 18px 12px 6px 20px; }
 .round { width: 44px; height: 44px; border-radius: 22px; border: none; background: var(--c-surface); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-soft); }
-.tabs { margin: 4px 20px 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; background: #ECE8FF; padding: 4px; border-radius: 14px; }
+.tabs { margin: 4px 20px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; background: #ECE8FF; padding: 4px; border-radius: 14px; }
 .tabs button { height: 40px; border: none; border-radius: 11px; background: transparent; color: var(--c-muted); font-size: 14px; font-weight: 500; }
 .tabs button.on { background: var(--c-surface); color: var(--c-ink); font-weight: 700; box-shadow: 0 1px 4px rgba(31,27,58,.10); }
 .body { flex: 1; min-height: 0; padding: 16px 20px 100px; display: flex; flex-direction: column; gap: 12px; }
@@ -209,5 +261,8 @@ h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--c-muted); }
 .dot { position: absolute; right: 0; bottom: 2px; width: 12px; height: 12px; border-radius: 6px; background: var(--c-live); border: 2px solid #fff; }
 .name { display: flex; align-items: center; gap: 6px; }
 .ga { background: var(--c-primary-soft); color: var(--c-primary-deep); font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 8px; }
+.tab-dot { display: inline-block; margin-left: 4px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: #E04A36; color: #fff; font-size: 11px; font-weight: 700; vertical-align: 1px; }
+.plaza-ic { width: 48px; height: 48px; border-radius: 16px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.col small .live { color: var(--c-live); font-weight: 700; }
 .talk { height: 36px; padding: 0 14px; border: 1.5px solid var(--c-primary-line); border-radius: 12px; background: var(--c-surface); color: var(--c-primary-ink); font-size: 13px; font-weight: 700; flex-shrink: 0; }
 </style>

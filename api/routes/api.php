@@ -56,9 +56,13 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::get('plazas/{plaza}', [PlazaController::class, 'show']);
         Route::post('plazas/{plaza}/enter', [PlazaController::class, 'enter']);
         Route::post('plazas/{plaza}/heartbeat', [PlazaController::class, 'heartbeat']);
-        Route::post('plazas/{plaza}/leave', [PlazaController::class, 'leave']);
+        Route::post('plazas/{plaza}/leave', [PlazaController::class, 'leave']); // 화면 떠남 (참여는 유지)
+        Route::post('plazas/{plaza}/quit', [PlazaController::class, 'quit']);   // 나가기 버튼 (참여 끝)
+        Route::post('plazas/{plaza}/read', [PlazaController::class, 'read']);
+        Route::get('me/plazas', [PlazaController::class, 'joined']);
         // 동네 상시 광장 (구역·채널)
         Route::get('town', [TownController::class, 'mine']);
+        Route::get('free-plaza', [TownController::class, 'free']);
         Route::get('plazas/{plaza}/town', [TownController::class, 'show']);
         Route::post('plazas/{plaza}/town/enter', [TownController::class, 'enter'])->middleware('throttle:30,1');
         Route::post('plazas/{plaza}/town/heartbeat', [TownController::class, 'heartbeat']);

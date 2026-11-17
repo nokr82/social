@@ -21,6 +21,8 @@ class PlazaResource extends JsonResource
             'category' => $this->category,
             'category_label' => config('social.categories')[$this->category] ?? $this->category,
             'distance_label' => isset($this->distance_m) ? Geo::distanceLabel($this->distance_m) : null,
+            // 지금 위치에서 들어갈 수 있는지 (5km 안). 좌표를 안 보냈으면 null. 화면 🔒 표시용일 뿐 입장 판단은 서버가 다시 함
+            'can_enter' => isset($this->can_enter) ? (bool) $this->can_enter : null,
             'live_count' => $this->live_count ?? 0,
             'is_live' => ($this->live_count ?? 0) > 0,
             'capacity' => $this->capacity,

@@ -26,8 +26,9 @@ class PlazaController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'lat' => ['required', 'numeric', 'between:-90,90'],
-            'lng' => ['required', 'numeric', 'between:-180,180'],
+            // 위치 권한이 없으면 좌표 없이 검색만 가능 (주변 목록은 빈 목록)
+            'lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:lng'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat'],
             'category' => ['nullable', Rule::in(array_keys(config('social.categories')))],
             'q' => ['nullable', 'string', 'max:30'],
             'sort' => ['nullable', Rule::in(['near', 'busy', 'new'])],
@@ -35,7 +36,9 @@ class PlazaController extends Controller
         ]);
 
         $all = $this->plazas->nearby(
-            $request->user(), (float) $data['lat'], (float) $data['lng'],
+            $request->user(),
+            isset($data['lat']) ? (float) $data['lat'] : null,
+            isset($data['lng']) ? (float) $data['lng'] : null,
             $data['category'] ?? null, isset($data['q']) ? trim($data['q']) : null,
             $data['sort'] ?? 'near',
         );
@@ -64,7 +67,7 @@ class PlazaController extends Controller
         ]);
 
         $plaza = $this->plazas->create($request->user(), $data, (float) $data['lat'], (float) $data['lng']);
-        // 만든 사람은 바로 입장
+        // 만든 사람은 바로 입장 (방장이라 거리 검사 없음)
         $this->plazas->enter($request->user(), $plaza);
 
         return (new PlazaResource($this->plazas->attachLive(collect([$plaza]))->first()))
@@ -80,19 +83,70 @@ class PlazaController extends Controller
         ]);
         if (isset($data['lat'])) {
             $plaza->distance_m = Geo::distanceM((float) $data['lat'], (float) $data['lng'], $plaza->lat, $plaza->lng);
+            $plaza->can_enter = $plaza->distance_m <= (float) config('social.plaza.search_radius_m');
         }
 
         return new PlazaResource($this->plazas->attachLive(collect([$plaza]))->first());
     }
 
-    /** POST /api/plazas/{plaza}/enter */
+    /** POST /api/plazas/{plaza}/enter {lat?, lng?} — 처음 들어올 땐 좌표 필수(5km 안), 이미 안에 있거나 방장이면 생략 가능 */
     public function enter(Request $request, Plaza $plaza): JsonResponse
     {
-        $this->plazas->enter($request->user(), $plaza);
+        $data = $request->validate([
+            'lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:lng'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat'],
+        ]);
+        $this->plazas->enter(
+            $request->user(), $plaza,
+            isset($data['lat']) ? (float) $data['lat'] : null,
+            isset($data['lng']) ? (float) $data['lng'] : null,
+        );
 
         return response()->json([
             'channel' => "presence-plaza.{$plaza->id}",
             'heartbeat_interval' => (int) config('social.plaza.presence_ttl') / 2,
+        ]);
+    }
+
+    /** POST /api/plazas/{plaza}/quit — '나가기' 버튼: 참여를 끝냄. 방장이면 바로 위임(없으면 닫힘) */
+    public function quit(Request $request, Plaza $plaza): JsonResponse
+    {
+        $this->plazas->quit($request->user(), $plaza);
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /** POST /api/plazas/{plaza}/read {last_id} — 읽음 위치 (앞으로만) */
+    public function read(Request $request, Plaza $plaza): JsonResponse
+    {
+        $data = $request->validate(['last_id' => ['required', 'integer', 'min:1']]);
+        $this->plazas->markRead($request->user(), $plaza, (int) $data['last_id']);
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * GET /api/me/plazas — 채팅 탭 '광장': 내가 참여 중인 광장, 최근 대화 순
+     * {data[{plaza, member_count, unread, last_message{body, sender, mine, created_at}|null}], unread_total}
+     */
+    public function joined(Request $request): JsonResponse
+    {
+        $me = $request->user();
+        $rows = $this->plazas->joined($me);
+
+        return response()->json([
+            'data' => $rows->map(fn (array $r) => [
+                'plaza' => new PlazaResource($r['plaza']),
+                'member_count' => $r['plaza']->member_count,
+                'unread' => $r['unread'],
+                'last_message' => $r['last_message'] ? [
+                    'body' => $r['last_message']->preview(),
+                    'sender' => $r['last_message']->sender?->nickname,
+                    'mine' => (int) $r['last_message']->sender_id === (int) $me->id,
+                    'created_at' => $r['last_message']->created_at?->toIso8601String(),
+                ] : null,
+            ])->all(),
+            'unread_total' => $rows->sum('unread'),
         ]);
     }
 

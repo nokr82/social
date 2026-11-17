@@ -4,7 +4,10 @@
  * 위: 가상 광장(아바타) / 아래: 채팅
  *
  * 실시간 구조
- *  - 입장: POST /plazas/{id}/enter → presence 채널 plaza.{id} 구독
+ *  - 입장: POST /plazas/{id}/enter {lat, lng} → presence 채널 plaza.{id} 구독
+ *    처음 들어올 땐 5km 안이어야 함(서버 검사). 위치 권한이 없으면 좌표를 안 보냄 → 서버가 LOCATION_REQUIRED
+ *  - 화면을 떠나도(leave) 참여는 유지 → 채팅 탭 '광장'에 남음. 참여자 목록 > '광장 나가기'로만 참여 끝 (quit)
+ *  - 읽음 위치: 메시지를 불러오거나 새 메시지가 오면 잠깐 모아서 POST /read (채팅 탭 안 읽은 수)
  *  - 접속자: presence here/joining/leaving (서버 저장 없음)
  *  - 아바타 이동: whisper 'move' {id, x, y} — x,y는 0~1 비율 (화면 크기 무관)
  *  - 채팅: POST 저장 → 서버가 '.message.sent' 브로드캐스트 (보낸 나는 응답으로 바로 표시)
@@ -46,7 +49,7 @@ const hasOlder = ref(true);
 const chatEl = ref(null);
 const membersReady = ref(false);      // presence here() 수신 전에는 방장 부재 판단 안 함
 const kicked = ref(new Set());        // 이번 접속 중 강퇴된 사람 (구독이 남아 있어도 화면·whisper에서 제외)
-const hostSheet = ref(null);          // 방장 시트 {mode: 'kick'|'transfer'|'close'|'kicks', user?}
+const hostSheet = ref(null);          // 확인 시트 {mode: 'kick'|'transfer'|'close'|'kicks'|'quit', user?} (quit은 누구나)
 const kickList = ref(null);           // 강퇴 목록 (null = 불러오는 중)
 const kickReasons = ref([]);          // GET /meta/kick-reasons (처음 열 때 1번)
 const hostBusy = ref(false);
@@ -120,13 +123,17 @@ function placeNew(userId) {
 
 /* ---------------- 입장 · 퇴장 ---------------- */
 
+// 입장 때 보낼 내 좌표. 기본 위치(위치 권한 없음)는 보내지 않는다 — 보내면 역삼 근처 광장에 들어갈 수 있게 됨
+let here = {};
+
 async function enter() {
     try {
         if (!auth.me) auth.me = (await get('/me')).data;
         const loc = await getLocation();
+        here = loc.fallback ? {} : { lat: loc.lat, lng: loc.lng };
         const [p] = await Promise.all([
-            get(`/plazas/${props.id}?lat=${loc.lat}&lng=${loc.lng}`),
-            post(`/plazas/${props.id}/enter`),
+            get(loc.fallback ? `/plazas/${props.id}` : `/plazas/${props.id}?lat=${loc.lat}&lng=${loc.lng}`),
+            post(`/plazas/${props.id}/enter`, here),
         ]);
         plaza.value = p.data;
 
@@ -135,6 +142,7 @@ async function enter() {
         ]);
         meetup.value = meetups.data[0] ?? null;
         messages.value = msgs.data.reverse();
+        markRead();
         hasOlder.value = msgs.data.length >= 50;
         blocked.value = new Set(blocks.user_ids);
         scrollToBottom();
@@ -143,7 +151,8 @@ async function enter() {
         // 앱 문서: 광장 화면에 있는 동안 30초마다 heartbeat
         heartbeatTimer = setInterval(() => post(`/plazas/${props.id}/heartbeat`).catch(onHeartbeatError), 30_000);
     } catch (e) {
-        showToast(e instanceof ApiError ? e.message : '광장에 들어갈 수 없어요');
+        // OUT_OF_RANGE·LOCATION_REQUIRED 등은 서버 문구 그대로 (5km 안만 / 위치 권한 필요)
+        showToast(e instanceof ApiError ? e.message : '광장에 들어갈 수 없어요', 3500);
         router.replace({ name: 'main' });
     }
 }
@@ -153,7 +162,7 @@ function onHeartbeatError(e) {
     if (e instanceof ApiError && e.code === 'PLAZA_CLOSED') return onClosed();
     // 네트워크가 끊겼다 돌아와 이탈 처리된 경우 → 다시 입장 (강퇴됐거나 닫혔으면 여기서 알게 됨)
     if (e instanceof ApiError && e.code === 'NOT_IN_PLAZA') {
-        post(`/plazas/${props.id}/enter`).catch((err) => {
+        post(`/plazas/${props.id}/enter`, here).catch((err) => {
             if (err instanceof ApiError && err.code === 'KICKED') onKickedMe();
             else if (err instanceof ApiError && err.code === 'PLAZA_CLOSED') onClosed();
         });
@@ -374,6 +383,15 @@ async function doTransfer() {
     Object.assign(plaza.value, { host_id: user.id, is_host: false });
 }
 
+/** 광장 나가기: 참여를 끝냄 (채팅 탭 목록에서도 빠짐). 방장이면 서버가 바로 위임하거나 닫음 */
+async function doQuit() {
+    if (!(await hostAction('quit'))) return;
+    closedHandled = true; // 내가 나가면서 광장이 닫혀도 '닫혔어요' 안내를 띄우지 않음
+    hostSheet.value = null;
+    showToast('광장에서 나왔어요');
+    router.replace({ name: 'chats', query: { tab: 'plazas' } });
+}
+
 async function doClose() {
     if (!(await hostAction('close'))) return;
     closedHandled = true; // 내가 닫았으니 '방장이 닫았어요' 대신 아래 문구
@@ -392,6 +410,17 @@ function appendMessage(msg) {
     messages.value.push(msg);
     if (msg.sender) showBubble(msg.sender.id, msg.body);
     scrollToBottom();
+    markRead();
+}
+
+// 읽음 위치 저장: 메시지가 몰려 올 때 매번 요청하지 않도록 1초 모아서 한 번
+let readTimer = null;
+function markRead() {
+    clearTimeout(readTimer);
+    readTimer = setTimeout(() => {
+        const last = [...messages.value].reverse().find((m) => typeof m.id === 'number'); // 시스템 문구(sys-…) 제외
+        if (last) post(`/plazas/${props.id}/read`, { last_id: last.id }).catch(() => {});
+    }, 1000);
 }
 
 function pushSystem(text) {
@@ -468,7 +497,10 @@ function openReport(user) {
 }
 
 onMounted(enter);
-onBeforeUnmount(leave);
+onBeforeUnmount(() => {
+    clearTimeout(readTimer);
+    leave(); // 접속만 끝냄 — 참여는 유지
+});
 </script>
 
 <template>
@@ -634,12 +666,13 @@ onBeforeUnmount(leave);
                     <button type="button" class="kick-manage" @click="(showMembers = false), openHostSheet('kicks')">내보낸 사람 관리</button>
                     <button type="button" class="close-plaza" @click="(showMembers = false), openHostSheet('close')">광장 닫기</button>
                 </template>
+                <button type="button" class="kick-manage" @click="(showMembers = false), openHostSheet('quit')">광장 나가기</button>
             </div>
         </div>
 
         <!-- 방장 확인 시트: 내보내기(사유 선택) · 넘기기 · 닫기 -->
         <div v-if="hostSheet" class="dim" @click.self="hostSheet = null">
-            <div class="sheet" role="dialog" aria-modal="true" :aria-label="{ close: '광장 닫기', kick: '내보내기', transfer: '방장 넘기기', kicks: '내보낸 사람' }[hostSheet.mode]">
+            <div class="sheet" role="dialog" aria-modal="true" :aria-label="{ close: '광장 닫기', kick: '내보내기', transfer: '방장 넘기기', kicks: '내보낸 사람', quit: '광장 나가기' }[hostSheet.mode]">
                 <div class="grip" />
                 <template v-if="hostSheet.mode === 'kick'">
                     <b class="sheet-title">{{ hostSheet.user.nickname }}님을 내보낼까요?</b>
@@ -665,6 +698,14 @@ onBeforeUnmount(leave);
                             <button type="button" class="revoke" :disabled="hostBusy" @click="revokeKick(k)">해제</button>
                         </div>
                     </div>
+                </template>
+                <template v-else-if="hostSheet.mode === 'quit'">
+                    <b class="sheet-title">광장에서 나갈까요?</b>
+                    <p class="sheet-desc">
+                        채팅 탭 광장 목록에서 빠져요. 다시 들어오려면 이 광장 5km 안에 있어야 해요.
+                        <template v-if="isHost"><br><b>방장 자리는 자격 있는 참여자에게 바로 넘어가고, 넘길 사람이 없으면 광장이 닫혀요.</b></template>
+                    </p>
+                    <button type="button" class="sheet-ok danger" :disabled="hostBusy" @click="doQuit">나가기</button>
                 </template>
                 <template v-else>
                     <b class="sheet-title">광장을 닫을까요?</b>

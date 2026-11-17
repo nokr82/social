@@ -32,14 +32,14 @@ class PlazaHostPowerTest extends TestCase
         Event::fake([PlazaClosed::class, PlazaHostChanged::class, PlazaMemberKicked::class]);
         $this->host = User::factory()->complete()->create();
         $this->plaza = app(PlazaService::class)->create($this->host, ['name' => '역삼 수다방', 'category' => 'talk'], self::LAT, self::LNG);
-        $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/enter")->assertOk();
+        $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
     }
 
     private function guest(int $score = 500): User
     {
         $u = User::factory()->complete()->create();
         $u->trustScore()->update(['score' => $score]);
-        $this->actingAs($u)->postJson("/api/plazas/{$this->plaza->id}/enter")->assertOk();
+        $this->actingAs($u)->postJson("/api/plazas/{$this->plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
 
         return $u->fresh();
     }
@@ -70,7 +70,7 @@ class PlazaHostPowerTest extends TestCase
 
         // 접속에서 빠짐 → heartbeat는 NOT_IN_PLAZA, 재입장은 KICKED, 메시지도 불가
         $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/heartbeat")->assertStatus(409);
-        $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/enter")
+        $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])
             ->assertForbidden()->assertJsonPath('code', 'KICKED');
         $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/messages", ['body' => '나 다시 왔지롱'])
             ->assertForbidden();
@@ -82,8 +82,8 @@ class PlazaHostPowerTest extends TestCase
 
         // 시간이 지나도 풀리지 않음 (기한 없음)
         $this->travel(3)->days();
-        $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/enter")->assertOk(); // 방장 복귀
-        $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/enter")->assertJsonPath('code', 'KICKED');
+        $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk(); // 방장 복귀
+        $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertJsonPath('code', 'KICKED');
 
         // 방장의 강퇴 목록에 보이고, 해제하면 다시 입장 가능
         $this->actingAs($this->host)->getJson("/api/plazas/{$this->plaza->id}/kicks")
@@ -94,7 +94,7 @@ class PlazaHostPowerTest extends TestCase
         $this->actingAs($this->host)->deleteJson("/api/plazas/{$this->plaza->id}/kicks/{$kickId}")->assertOk();
 
         $this->actingAs($this->host)->getJson("/api/plazas/{$this->plaza->id}/kicks")->assertJsonCount(0, 'data');
-        $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/enter")->assertOk();
+        $this->actingAs($guest)->postJson("/api/plazas/{$this->plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk();
         $this->assertNotNull(PlazaKick::find($kickId)->revoked_at); // 기록은 남음
         $this->assertSame($this->host->id, (int) PlazaKick::find($kickId)->revoked_by);
     }

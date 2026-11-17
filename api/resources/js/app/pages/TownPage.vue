@@ -5,6 +5,7 @@
  *
  * 구조
  *  - 입장: POST /plazas/{id}/town/enter → 서버가 구역(안 고르면 가장 북적이는 곳)·채널(30명 단위) 배정
+ *    동네 광장 첫 입장은 내 좌표로 '내 동네'인지 서버가 확인. 자유광장은 좌표 없이 누구나
  *  - 같은 구역·채널 사람끼리만 보임: presence 채널 town.{id}.{구역}.{채널}
  *  - 구역 탭·채널 바꾸기 = enter를 다시 호출 (서버가 이전 자리에서 빼줌)
  *  - 30초마다 heartbeat, 20초마다 지도 숫자 갱신, 화면을 떠나면 leave
@@ -15,6 +16,7 @@ import AvatarFace from '../components/AvatarFace.vue';
 import { ApiError, api, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
 import { connectEcho } from '../lib/echo';
+import { getLocation } from '../lib/location';
 import { showToast } from '../lib/toast';
 
 const props = defineProps({ id: { type: String, required: true } });
@@ -84,12 +86,18 @@ const more = computed(() => Math.max(0, visible.value.length - SLOTS.length));
 
 /* ---------------- 입장 · 이동 ---------------- */
 
+/** 입장 때 보낼 내 좌표. 기본 위치(위치 권한 없음)는 보내지 않음 → 동네 광장은 서버가 거절, 자유광장은 통과 */
+async function here() {
+    const loc = await getLocation();
+    return loc.fallback ? {} : { lat: loc.lat, lng: loc.lng };
+}
+
 /** 입장 또는 구역·채널 이동. 서버가 자리를 배정하고 이전 자리에서 빼준다 */
 async function enterAt(z = null, ch = null) {
     if (moving.value) return;
     moving.value = true;
     try {
-        const res = await post(`/plazas/${props.id}/town/enter`, { zone: z, channel: ch });
+        const res = await post(`/plazas/${props.id}/town/enter`, { zone: z, channel: ch, ...(await here()) });
         if (left) return; // 응답 오기 전에 화면을 떠났으면 무시
         state.value = res.state;
         const changed = res.zone !== zone.value || res.channel !== channel.value;
@@ -100,8 +108,8 @@ async function enterAt(z = null, ch = null) {
             await loadMessages();
         }
     } catch (e) {
-        showToast(e instanceof ApiError ? e.message : '광장에 들어갈 수 없어요');
-        if (!zone.value) router.replace({ name: 'main' }); // 첫 입장 실패면 메인으로
+        showToast(e instanceof ApiError ? e.message : '광장에 들어갈 수 없어요', 3500);
+        if (!zone.value) router.replace({ name: 'main' }); // 첫 입장 실패면 메인으로 (NOT_MY_TOWN·LOCATION_REQUIRED 포함)
     } finally {
         moving.value = false;
     }
@@ -147,7 +155,7 @@ async function heartbeat() {
         // 네트워크가 끊겼다 돌아와 이탈 처리된 경우 → 같은 자리로 다시 (꽉 찼으면 같은 구역 다른 채널)
         if (e instanceof ApiError && e.code === 'NOT_IN_PLAZA') {
             const z = zone.value;
-            await post(`/plazas/${props.id}/town/enter`, { zone: z, channel: channel.value })
+            await post(`/plazas/${props.id}/town/enter`, { zone: z, channel: channel.value, ...(await here()) })
                 .catch(() => enterAt(z));
         }
     }

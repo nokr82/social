@@ -27,7 +27,8 @@ class TownTest extends TestCase
 
     private function enter(User $u, int $townId, array $body = [])
     {
-        return $this->actingAs($u)->postJson("/api/plazas/{$townId}/town/enter", $body);
+        // 동네 광장 첫 입장은 좌표 필수 → 기본은 역삼(테스트 동네) 좌표를 함께 보냄
+        return $this->actingAs($u)->postJson("/api/plazas/{$townId}/town/enter", $body + ['lat' => self::LAT, 'lng' => self::LNG]);
     }
 
     /* ---------------- 동네 광장 찾기 ---------------- */
@@ -188,5 +189,42 @@ class TownTest extends TestCase
         // 일반 광장을 상시 광장 API로 부르면 404
         $userPlaza = app(\App\Services\Plaza\PlazaService::class)->create($u, ['name' => '수다방', 'category' => 'talk'], self::LAT, self::LNG);
         $this->enter($u, $userPlaza->id)->assertNotFound()->assertJsonPath('code', 'NOT_TOWN');
+    }
+
+    /* ---------------- 입장 제한 · 자유광장 ---------------- */
+
+    public function test_town_enter_only_from_my_town(): void
+    {
+        [$me, $other] = User::factory()->count(2)->complete()->create();
+        $id = $this->town($me)['id'];
+        $url = "/api/plazas/{$id}/town/enter";
+
+        // 다른 동네 좌표(부산)·좌표 없음 → 거절
+        $this->actingAs($other)->postJson($url, ['lat' => 35.1587, 'lng' => 129.1604])
+            ->assertForbidden()->assertJsonPath('code', 'NOT_MY_TOWN');
+        $this->actingAs($other)->postJson($url)->assertForbidden()->assertJsonPath('code', 'LOCATION_REQUIRED');
+
+        // 내 동네면 들어가고, 안에서 구역을 옮길 땐 좌표 없어도 됨
+        $this->enter($me, $id, ['zone' => 'bench'])->assertOk();
+        $this->actingAs($me)->postJson($url, ['zone' => 'field'])->assertOk()->assertJsonPath('zone', 'field');
+    }
+
+    public function test_free_plaza_is_single_and_open_without_location(): void
+    {
+        [$a, $b] = User::factory()->count(2)->complete()->create();
+
+        $first = $this->actingAs($a)->getJson('/api/free-plaza')->assertOk()->json('data');
+        $second = $this->actingAs($b)->getJson('/api/free-plaza')->assertOk()->json('data');
+        $this->assertSame($first['id'], $second['id']);
+        $this->assertTrue($first['is_free']);
+        $this->assertSame('자유광장', $first['name']);
+        $this->assertSame(1, Plaza::where('region_code', Plaza::FREE_REGION)->count());
+
+        // 위치 없이 입장·대화
+        $this->actingAs($a)->postJson("/api/plazas/{$first['id']}/town/enter", ['zone' => 'bench'])->assertOk();
+        $this->actingAs($a)->postJson("/api/plazas/{$first['id']}/town/messages", ['zone' => 'bench', 'channel' => 1, 'body' => '안녕'])->assertCreated();
+
+        // 동네 광장과 달리 주민 광장 검색에는 안 나옴
+        $this->actingAs($a)->getJson('/api/plazas?q='.urlencode('자유'))->assertJsonCount(0, 'data');
     }
 }
