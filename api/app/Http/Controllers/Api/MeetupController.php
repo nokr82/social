@@ -239,7 +239,7 @@ class MeetupController extends Controller
             'capacity' => $m->capacity,
             'joined_count' => $joined->count(),
             'members' => $this->members($joined, $m, $me),
-            'condition' => $this->conditionLabel($m),
+            'condition' => $m->conditionLabel(),
             'status' => $m->status,
             'my_status' => $m->host_id === $me->id ? 'host' : ($isMember ? 'joined' : 'none'),
             'is_upcoming' => $m->isUpcoming(),
@@ -256,19 +256,5 @@ class MeetupController extends Controller
                 'arrived' => $x->arrived_at !== null,
                 'noshow' => $x->noshow_at !== null,
             ])->all();
-    }
-
-    /**
-     * 조건 문구. '내 나이 ±5세'를 실제 범위로 보여주면 가운데 값이 곧 호스트 나이라
-     * (예: 25~35세 → 30세) 나이 비공개 원칙이 깨진다. 그래서 범위 대신 설명으로.
-     */
-    private function conditionLabel(Meetup $m): string
-    {
-        return match ($m->age_rule) {
-            '20s' => '본인인증 · 20대',
-            '30s' => '본인인증 · 30대',
-            'near' => '본인인증 · 호스트와 비슷한 나이 (±5세)',
-            default => '본인인증 회원 누구나',
-        };
     }
 }

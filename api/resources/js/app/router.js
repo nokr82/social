@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import { rememberAfterLogin } from './lib/afterLogin';
 import { auth } from './lib/auth';
 
 const router = createRouter({
@@ -32,9 +33,12 @@ const router = createRouter({
     ],
 });
 
-// 로그인 안 했으면 온보딩으로
+// 로그인 안 했으면 온보딩으로. 가려던 곳은 기억해 두었다가 로그인·가입이 끝나면 그리로 (공유 링크로 들어온 경우)
 router.beforeEach((to) => {
-    if (!to.meta.public && !auth.loggedIn) return { name: 'onboarding' };
+    if (!to.meta.public && !auth.loggedIn) {
+        rememberAfterLogin(to.fullPath);
+        return { name: 'onboarding' };
+    }
 });
 
 export default router;

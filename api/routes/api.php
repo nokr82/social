@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\FriendRequestController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\PhotoController;
 use App\Http\Controllers\Api\SafetyController;
+use App\Http\Controllers\Api\ShareController;
 use App\Http\Controllers\Api\TownController;
 use App\Http\Controllers\Api\UserProfileController;
 use Illuminate\Support\Facades\Route;
@@ -60,6 +61,9 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::post('plazas/{plaza}/quit', [PlazaController::class, 'quit']);   // 나가기 버튼 (참여 끝)
         Route::post('plazas/{plaza}/read', [PlazaController::class, 'read']);
         Route::get('me/plazas', [PlazaController::class, 'joined']);
+        // 공유 링크 만들기 (미리보기 페이지는 routes/web.php의 /s/p·/s/m)
+        Route::post('plazas/{plaza}/share', [ShareController::class, 'plaza']);
+        Route::post('meetups/{meetup}/share', [ShareController::class, 'meetup']);
         // 동네 상시 광장 (구역·채널)
         Route::get('town', [TownController::class, 'mine']);
         Route::get('free-plaza', [TownController::class, 'free']);

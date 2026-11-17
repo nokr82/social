@@ -9,6 +9,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
 import { ApiError, del, get, post } from '../lib/api';
+import { shareLink } from '../lib/share';
 import { meetupWhen, until } from '../lib/time';
 import { showToast } from '../lib/toast';
 
@@ -75,10 +76,16 @@ onMounted(load);
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
             </button>
             <span class="head-title">번개</span>
-            <button v-if="m && m.my_status !== 'host'" class="icon" aria-label="더보기 (신고)" @click="openReport">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#1F1B3A" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
-            </button>
-            <span v-else class="icon" />
+            <span class="head-actions">
+                <!-- 공유: 시작 전 번개만. 미리보기에는 정확한 장소가 안 나감 -->
+                <button v-if="m?.is_upcoming" class="icon" aria-label="번개 공유하기" @click="shareLink(`/meetups/${m.id}/share`)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="M7 8l5-5 5 5" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
+                </button>
+                <button v-if="m && m.my_status !== 'host'" class="icon" aria-label="더보기 (신고)" @click="openReport">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#1F1B3A" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+                </button>
+                <span v-else-if="!m?.is_upcoming" class="icon" />
+            </span>
         </div>
 
         <div v-if="m" class="body scroll">
@@ -174,6 +181,7 @@ onMounted(load);
 .bg { height: 100%; display: flex; flex-direction: column; position: relative; }
 .head { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 4px 8px; }
 .head-title { font-size: 16px; font-weight: 700; }
+.head-actions { display: flex; align-items: center; }
 .icon { width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; }
 .body { flex: 1; min-height: 0; padding: 4px 20px 120px; display: flex; flex-direction: column; gap: 14px; }
 

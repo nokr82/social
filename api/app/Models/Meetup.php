@@ -74,6 +74,21 @@ class Meetup extends Model
         return $this->status === self::OPEN && now()->lt($this->starts_at);
     }
 
+    /**
+     * 조건 문구. '내 나이 ±5세'를 실제 범위로 보여주면 가운데 값이 곧 호스트 나이라
+     * (예: 25~35세 → 30세) 나이 비공개 원칙이 깨진다. 그래서 범위 대신 설명으로.
+     * 앱 상세와 공유 미리보기가 같은 문구를 쓰도록 모델에 둔다.
+     */
+    public function conditionLabel(): string
+    {
+        return match ($this->age_rule) {
+            '20s' => '본인인증 · 20대',
+            '30s' => '본인인증 · 30대',
+            'near' => '본인인증 · 호스트와 비슷한 나이 (±5세)',
+            default => '본인인증 회원 누구나',
+        };
+    }
+
     public function scopeUpcoming(Builder $q): Builder
     {
         return $q->where('status', self::OPEN)->where('starts_at', '>', now());

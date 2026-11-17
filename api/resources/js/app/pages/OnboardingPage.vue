@@ -17,6 +17,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
+import { takeAfterLogin } from '../lib/afterLogin';
 import { ApiError, get, post, upload } from '../lib/api';
 import { auth } from '../lib/auth';
 import { AVATAR_COLORS, AVATAR_FACES } from '../lib/avatar';
@@ -107,12 +108,17 @@ async function handleKakaoReturn() {
     await run(async () => afterSocial(await post('/auth/social', { provider: 'kakao', token: code })));
 }
 
-/** 소셜 로그인 결과: 기존 회원 → 메인, 신규 → 본인인증 단계 */
+/** 로그인·가입이 끝나면: 공유 링크 등으로 가려던 곳이 있으면 그리로, 없으면 메인 */
+function goNext() {
+    return router.replace(takeAfterLogin() ?? { name: 'main' });
+}
+
+/** 소셜 로그인 결과: 기존 회원 → 메인(또는 가려던 곳), 신규 → 본인인증 단계 */
 async function afterSocial(res) {
     if (res.status === 'login') {
         auth.setToken(res.token);
         auth.me = res.user;
-        return router.replace({ name: 'main' });
+        return goNext();
     }
     signupToken.value = res.signup_token;
     // 전에 본인인증까지 마치고 나갔던 계정 → 인증 단계를 건너뛰고 닉네임부터
@@ -369,7 +375,7 @@ function back() {
             </div>
 
             <div class="grow" />
-            <button class="btn-primary" :disabled="!photos.length" @click="router.replace({ name: 'main' })">광장으로 가기</button>
+            <button class="btn-primary" :disabled="!photos.length" @click="goNext()">광장으로 가기</button>
         </section>
 
         <!-- 개발용 본인인증 시트 -->

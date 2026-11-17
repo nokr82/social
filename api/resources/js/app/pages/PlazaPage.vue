@@ -25,6 +25,7 @@ import { seededSpot } from '../lib/avatar';
 import { connectEcho } from '../lib/echo';
 import { meetupWhen } from '../lib/time';
 import { getLocation } from '../lib/location';
+import { shareLink } from '../lib/share';
 import { showToast } from '../lib/toast';
 
 const props = defineProps({ id: { type: String, required: true } });
@@ -521,6 +522,10 @@ onBeforeUnmount(() => {
             </div>
             <button class="icon round primary" aria-label="이 광장에 번개 만들기" @click="router.push({ name: 'meetup-create', params: { plazaId: id } })">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></svg>
+            </button>
+            <!-- 공유: 휴대폰 공유창(카카오톡 등) 또는 링크 복사. 미리보기에는 대화 내용이 안 나감 -->
+            <button class="icon round" aria-label="광장 공유하기" @click="shareLink(`/plazas/${id}/share`)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="M7 8l5-5 5 5" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
             </button>
             <button class="icon round" aria-label="참여자 목록" @click="showMembers = true">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1F1B3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7" /><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5" /></svg>
