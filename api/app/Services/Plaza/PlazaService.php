@@ -283,6 +283,22 @@ class PlazaService
         })->sortByDesc(fn (array $r) => $r['last_message']?->id ?? 0)->values();
     }
 
+    /**
+     * 대화 읽기 권한: 입장과 같은 기준 — 참여자 또는 방장만.
+     * 전에는 광장 번호만 알면 누구나 읽을 수 있어서, 강퇴된 사람·5km 밖 사람이 대화를 계속 볼 수 있었다.
+     * 강퇴되면 참여 행이 지워지므로 여기서 함께 막힌다. 닫힌 광장도 참여가 정리돼 읽을 수 없다.
+     */
+    private function assertCanRead(User $viewer, Plaza $plaza): void
+    {
+        if ((int) $plaza->host_id === (int) $viewer->id || $this->isMember($plaza, $viewer)) {
+            return;
+        }
+        if (PlazaKick::active()->where('plaza_id', $plaza->id)->where('user_id', $viewer->id)->exists()) {
+            throw new DomainException('KICKED', '이 광장에서 내보내져 대화를 볼 수 없어요', 403);
+        }
+        throw new DomainException('NOT_IN_PLAZA', '광장에 참여한 사람만 대화를 볼 수 있어요', 403);
+    }
+
     private function memberRow(Plaza $plaza, User $user)
     {
         return PlazaMember::where('plaza_id', $plaza->id)->where('user_id', $user->id);
@@ -605,6 +621,7 @@ class PlazaService
     public function messages(User $viewer, Plaza $plaza, ?int $beforeId, int $limit = 50): Collection
     {
         $this->assertUserMade($plaza);
+        $this->assertCanRead($viewer, $plaza);
         $room = $plaza->chatRoom()->firstOrFail();
 
         return $room->messages()

@@ -303,7 +303,12 @@ class TownService
     public function messages(User $viewer, Plaza $town, string $zone, int $channel, ?int $beforeId, int $limit = 50): Collection
     {
         $this->assertTown($town);
-        $this->validSpace($town, $zone, $channel);
+        $space = $this->validSpace($town, $zone, $channel);
+        // 읽기도 말하기와 같은 기준: 그 구역·채널에 들어와 있는 사람만.
+        // 전에는 번호만 알면 다른 구 광장·다른 채널 대화까지 읽을 수 있었다 (입장 제한 우회)
+        if (! $this->presence->has($space, $viewer->id)) {
+            throw new DomainException('NOT_IN_PLAZA', '광장에 들어온 뒤 대화를 볼 수 있어요', 403);
+        }
 
         return $town->chatRoom()->firstOrFail()->messages()
             ->where('channel', "{$zone}:{$channel}")

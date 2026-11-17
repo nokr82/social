@@ -596,4 +596,62 @@ class PlazaTest extends TestCase
         $this->actingAs($host)->postJson("{$url}/kick", ['user_id' => $me->id, 'reason' => 'spam'])->assertOk();
         $this->assertSame([], $this->joinedIds($me));
     }
+
+    /** 14일(member_idle_days) 동안 안 들어온 참여자는 새벽 정리에서 빠짐. 방장은 제외 */
+    public function test_purge_removes_idle_members_except_host(): void
+    {
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        [$idle, $active] = User::factory()->count(2)->complete()->create();
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+        foreach ([$host, $idle, $active] as $u) {
+            $this->actingAs($u)->postJson("/api/plazas/{$plaza->id}/enter", $here)->assertOk();
+        }
+
+        $days = (int) config('social.plaza.member_idle_days');
+        $this->travel($days - 1)->days();
+        // 방장도 들어와야 72시간 부재 위임이 먼저 일어나지 않음
+        $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk();
+        $this->actingAs($active)->postJson("/api/plazas/{$plaza->id}/enter")->assertOk(); // 참여자라 좌표 없이 재입장 → 기준 갱신
+        $this->travel(2)->days(); // idle은 기준 초과, active는 2일 전 방문
+        // 방장 행도 오래된 것으로 만들어 '방장 제외'를 확인
+        PlazaMember::where('plaza_id', $plaza->id)->where('user_id', $host->id)->update(['last_seen_at' => now()->subDays($days + 5)]);
+
+        $this->artisan('plazas:purge')->assertSuccessful();
+
+        $left = PlazaMember::where('plaza_id', $plaza->id)->pluck('user_id')->sort()->values()->all();
+        $this->assertSame(collect([$host->id, $active->id])->sort()->values()->all(), $left);
+        $this->assertSame([], $this->joinedIds($idle));
+    }
+
+    /** 대화 읽기도 입장과 같은 기준: 참여자·방장만. 강퇴·나가기·참여 안 함·닫힘이면 못 읽음 */
+    public function test_only_members_can_read_plaza_chat(): void
+    {
+        $host = User::factory()->complete()->create();
+        $plaza = $this->makePlaza($host);
+        [$member, $outsider, $kicked, $quitter] = User::factory()->count(4)->complete()->create();
+        $here = ['lat' => self::LAT, 'lng' => self::LNG];
+        $url = "/api/plazas/{$plaza->id}";
+        foreach ([$host, $member, $kicked, $quitter] as $u) {
+            $this->actingAs($u)->postJson("{$url}/enter", $here)->assertOk();
+        }
+        $this->actingAs($member)->postJson("{$url}/messages", ['body' => '우리끼리 얘기'])->assertCreated();
+
+        // 참여자는 화면을 떠나 있어도 읽음 (채팅 탭에서 이어 보기), 방장도 읽음
+        $this->actingAs($member)->postJson("{$url}/leave")->assertOk();
+        $this->actingAs($member)->getJson("{$url}/messages")->assertOk()->assertJsonCount(1, 'data');
+        $this->actingAs($host)->getJson("{$url}/messages")->assertOk();
+
+        // 참여 안 한 사람(번호만 아는 사람)
+        $this->actingAs($outsider)->getJson("{$url}/messages")->assertForbidden()->assertJsonPath('code', 'NOT_IN_PLAZA');
+        // 강퇴된 사람
+        $this->actingAs($host)->postJson("{$url}/kick", ['user_id' => $kicked->id, 'reason' => 'spam'])->assertOk();
+        $this->actingAs($kicked)->getJson("{$url}/messages")->assertForbidden()->assertJsonPath('code', 'KICKED');
+        // 나간 사람
+        $this->actingAs($quitter)->postJson("{$url}/quit")->assertOk();
+        $this->actingAs($quitter)->getJson("{$url}/messages")->assertForbidden();
+        // 닫힌 광장은 참여가 정리돼 손님은 못 읽음
+        app(PlazaService::class)->close($plaza->fresh(), 'host_closed');
+        $this->actingAs($member)->getJson("{$url}/messages")->assertForbidden();
+    }
 }

@@ -144,6 +144,13 @@ class TownTest extends TestCase
 
         $this->actingAs($b)->getJson("/api/plazas/{$id}/town/messages?zone=fountain&channel=1")->assertJsonCount(1, 'data');
         $this->actingAs($c)->getJson("/api/plazas/{$id}/town/messages?zone=bench&channel=1")->assertJsonCount(0, 'data');
+
+        // 읽기도 그 구역·채널에 있는 사람만: 다른 구역 대화를 엿볼 수 없음
+        $this->actingAs($c)->getJson("/api/plazas/{$id}/town/messages?zone=fountain&channel=1")
+            ->assertForbidden()->assertJsonPath('code', 'NOT_IN_PLAZA');
+        // 들어오지 않은 사람(번호만 아는 다른 동네 사람 포함)도 못 읽음
+        $outsider = User::factory()->complete()->create();
+        $this->actingAs($outsider)->getJson("/api/plazas/{$id}/town/messages?zone=fountain&channel=1")->assertForbidden();
     }
 
     /* ---------------- 메인 카드 ---------------- */
