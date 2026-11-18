@@ -30,4 +30,9 @@ class FakePlaceSearch implements PlaceSearch
             ];
         })->all();
     }
+
+    public function reverse(float $lat, float $lng): ?array
+    {
+        return ['address' => '서울 강남구 테헤란로 101', 'jibun' => '서울 강남구 역삼동 701', 'building_name' => '역삼빌딩'];
+    }
 }

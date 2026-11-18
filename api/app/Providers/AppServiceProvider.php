@@ -66,8 +66,8 @@ class AppServiceProvider extends ServiceProvider
             throw new RuntimeException('운영환경에서는 PLACE_DRIVER=kakao가 필요합니다.');
         }
 
-        // 장소 검색: 입력 중 0.3초마다 부르므로 분당 30회면 충분 (카카오 무료 쿼터 보호)
-        RateLimiter::for('place-search', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));
+        // 장소 검색·핀 주소: 입력이 0.3초, 지도가 0.4초 멈출 때만 부름 → 분당 60회면 충분 (카카오 무료 쿼터 보호)
+        RateLimiter::for('place-search', fn (Request $request) => Limit::perMinute(60)->by($request->user()?->id ?: $request->ip()));
 
         // 채팅 도배 방지: 사용자당 분당 30개
         RateLimiter::for('chat', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));

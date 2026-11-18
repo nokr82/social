@@ -35,4 +35,25 @@ class PlaceController extends Controller
 
         return response()->json(['data' => $results]);
     }
+
+    /** GET /api/places/scope?plaza_id — 장소 고르기 화면 시작 정보 (광장 종류·처음 위치·범위 원) */
+    public function scope(Request $request): JsonResponse
+    {
+        $plaza = Plaza::findOrFail($request->validate(['plaza_id' => ['required', 'integer']])['plaza_id']);
+
+        return response()->json(['data' => $this->places->scope($plaza)]);
+    }
+
+    /** GET /api/places/address?plaza_id&lat&lng — 지도 핀 위치의 주소·건물 이름·범위 안 여부 */
+    public function address(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'plaza_id' => ['required', 'integer'],
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+        $plaza = Plaza::findOrFail($data['plaza_id']);
+
+        return response()->json(['data' => $this->places->address($plaza, (float) $data['lat'], (float) $data['lng'])]);
+    }
 }

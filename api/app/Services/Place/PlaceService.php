@@ -48,6 +48,35 @@ class PlaceService
             ->values()->all();
     }
 
+    /**
+     * 장소 고르기 화면 시작 정보: 광장 종류·지도 처음 위치·범위 원.
+     * 동네 광장 경계는 다각형이라 원으로 못 그림 → radius null (핀 위치마다 reachable로 안내)
+     */
+    public function scope(Plaza $plaza): array
+    {
+        $kind = $plaza->isFree() ? 'free' : ($plaza->isTown() ? 'town' : 'user');
+
+        return [
+            'kind' => $kind,
+            // 광장 좌표는 격자 중심값(실제 위치 아님). 자유광장은 (0,0)이라 null
+            'center' => $kind === 'free' ? null : ['lat' => (float) $plaza->lat, 'lng' => (float) $plaza->lng],
+            'radius_m' => $kind === 'user' ? (int) config('social.meetup.place_max_m') : null,
+        ];
+    }
+
+    /** 지도 핀 위치 → 주소 + 이 광장 번개로 열 수 있는 곳인지 */
+    public function address(Plaza $plaza, float $lat, float $lng): array
+    {
+        $addr = $this->search->reverse($lat, $lng);
+
+        return [
+            'address' => $addr['address'] ?? null,
+            'jibun' => $addr['jibun'] ?? null,
+            'building_name' => ($addr['building_name'] ?? '') ?: null,
+            'reachable' => $addr !== null && $this->reachable($plaza, $lat, $lng),
+        ];
+    }
+
     /** 번개 생성 때 서버 재확인 */
     public function assertReachable(Plaza $plaza, float $lat, float $lng): void
     {

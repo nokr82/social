@@ -65,8 +65,10 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         // 공유 링크 만들기 (미리보기 페이지는 routes/web.php의 /s/p·/s/m)
         Route::post('plazas/{plaza}/share', [ShareController::class, 'plaza']);
         Route::post('meetups/{meetup}/share', [ShareController::class, 'meetup']);
-        // 번개 장소 검색 (카카오). 입력 중 자주 부르므로 따로 제한
+        // 번개 장소 고르기 (카카오). 입력·지도 이동 중 자주 부르므로 따로 제한
+        Route::get('places/scope', [PlaceController::class, 'scope']);
         Route::get('places/search', [PlaceController::class, 'search'])->middleware('throttle:place-search');
+        Route::get('places/address', [PlaceController::class, 'address'])->middleware('throttle:place-search');
         // 동네 상시 광장 (구역·채널)
         Route::get('town', [TownController::class, 'mine']);
         Route::get('free-plaza', [TownController::class, 'free']);
