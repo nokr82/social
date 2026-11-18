@@ -138,8 +138,8 @@ function pickResult(p) {
 }
 
 async function goMyLocation() {
-    const l = await getLocation();
-    if (l.fallback) return showToast('위치 권한을 켜면 내 위치로 이동할 수 있어요');
+    const l = await getLocation({ fresh: true }); // 버튼을 누른 '지금' 위치 (캐시 안 씀)
+    if (l.fallback) return showToast('위치를 가져오지 못했어요. 브라우저·휴대폰 설정에서 위치 권한을 켜 주세요');
     myPos = { lat: l.lat, lng: l.lng };
     moveTo(l.lat, l.lng);
 }

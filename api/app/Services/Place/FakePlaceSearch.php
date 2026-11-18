@@ -31,8 +31,17 @@ class FakePlaceSearch implements PlaceSearch
         })->all();
     }
 
+    /**
+     * 핀을 옮기면 주소도 바뀌어야 화면 동작을 확인할 수 있음 → 좌표로 번지를 만든다.
+     * (예전엔 늘 같은 주소를 돌려줘서 '핀을 움직여도 장소가 안 바뀐다'로 보였음)
+     */
     public function reverse(float $lat, float $lng): ?array
     {
-        return ['address' => '서울 강남구 테헤란로 101', 'jibun' => '서울 강남구 역삼동 701', 'building_name' => '역삼빌딩'];
+        $no = abs(crc32(Geo::encode($lat, $lng, 8))) % 900 + 100; // 약 20m 칸마다 다른 번지
+        return [
+            'address' => "서울 강남구 테스트로 {$no}",
+            'jibun' => "서울 강남구 역삼동 {$no}",
+            'building_name' => "테스트빌딩 {$no}",
+        ];
     }
 }

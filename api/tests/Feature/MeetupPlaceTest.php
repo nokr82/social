@@ -74,11 +74,16 @@ class MeetupPlaceTest extends TestCase
     /** 지도 핀 위치 → 주소·건물 이름 + 범위 안 여부 (화면은 범위 밖이면 '정하기'를 막음) */
     public function test_pin_address_and_reachable(): void
     {
-        $this->actingAs($this->host)->getJson("/api/places/address?plaza_id={$this->plaza->id}&lat=37.5016&lng=127.0374")
+        $a = $this->actingAs($this->host)->getJson("/api/places/address?plaza_id={$this->plaza->id}&lat=37.5016&lng=127.0374")
             ->assertOk()
-            ->assertJsonPath('data.building_name', '역삼빌딩')
-            ->assertJsonPath('data.jibun', '서울 강남구 역삼동 701')
-            ->assertJsonPath('data.reachable', true);
+            ->assertJsonPath('data.reachable', true)
+            ->json('data');
+        $this->assertStringStartsWith('테스트빌딩', $a['building_name']);
+        $this->assertStringStartsWith('서울 강남구 역삼동', $a['jibun']);
+
+        // 핀을 옮기면 주소도 바뀜 (가짜 드라이버도 좌표마다 다른 주소)
+        $b = $this->actingAs($this->host)->getJson("/api/places/address?plaza_id={$this->plaza->id}&lat=37.5036&lng=127.0394")->json('data');
+        $this->assertNotSame($a['address'], $b['address']);
 
         $this->actingAs($this->host)->getJson("/api/places/address?plaza_id={$this->plaza->id}&lat=37.60&lng=127.0364")
             ->assertJsonPath('data.reachable', false);
