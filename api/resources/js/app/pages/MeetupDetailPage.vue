@@ -1,7 +1,8 @@
 <script setup>
 /**
  * 번개 상세 (디자인: Bungae.dc.html)
- * - 정확한 장소는 참여 확정 후 공개 (서버가 참여자에게만 place_detail을 내려줌)
+ * - 정확한 장소는 참여 확정 후 공개 (서버가 참여자에게만 place·place_detail을 내려줌)
+ *   place = 카카오 검색으로 고른 장소(지도·카카오맵 링크), place_detail = 메모 또는 직접 입력한 장소
  * - 나이 조건은 서버가 확인만, 참여자 나이는 비공개
  * - 안전 안내 상시 노출 · 참여 → 번개 채팅방
  */
@@ -9,6 +10,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
 import { ApiError, del, get, post } from '../lib/api';
+import PlaceMap from '../components/PlaceMap.vue';
 import { shareLink } from '../lib/share';
 import { meetupWhen, until } from '../lib/time';
 import { showToast } from '../lib/toast';
@@ -112,7 +114,15 @@ onMounted(load);
                 <div class="row top">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
                     <span class="k">장소</span>
-                    <span class="v">
+                    <span v-if="m.place" class="v">
+                        <b>{{ m.place.name }}</b>
+                        <small>{{ m.place.address }}</small>
+                        <small v-if="m.place_detail" class="memo">{{ m.place_detail }}</small>
+                        <PlaceMap :lat="m.place.lat" :lng="m.place.lng" :height="130" class="place-map" />
+                        <a class="map-link" :href="m.place.map_url" target="_blank" rel="noopener">카카오맵에서 보기 · 길찾기</a>
+                        <small class="ok">참여 확정! 정확한 장소가 공개됐어요</small>
+                    </span>
+                    <span v-else class="v">
                         <b>{{ m.place_detail ?? m.area_label }}</b>
                         <small :class="{ ok: m.place_detail }">{{ m.place_detail ? '참여 확정! 정확한 장소가 공개됐어요' : '정확한 장소는 참여 확정 후 공개돼요' }}</small>
                     </span>
@@ -182,6 +192,9 @@ onMounted(load);
 .head { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 4px 8px; }
 .head-title { font-size: 16px; font-weight: 700; }
 .head-actions { display: flex; align-items: center; }
+.memo { color: var(--c-ink-2) !important; }
+.place-map { margin-top: 6px; }
+.map-link { align-self: flex-start; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--c-primary-deep); }
 .icon { width: 44px; height: 44px; border: none; background: none; display: flex; align-items: center; justify-content: center; }
 .body { flex: 1; min-height: 0; padding: 4px 20px 120px; display: flex; flex-direction: column; gap: 14px; }
 

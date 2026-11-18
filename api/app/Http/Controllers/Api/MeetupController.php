@@ -32,7 +32,14 @@ class MeetupController extends Controller
             'title' => ['required', 'string', 'min:2', 'max:60'],
             'description' => ['nullable', 'string', 'max:500'],
             'area_label' => ['required', 'string', 'max:40'],
-            'place_detail' => ['required', 'string', 'max:100'],
+            // 장소: 카카오 검색으로 고른 place 또는 직접 입력 place_detail 중 하나는 필수
+            'place' => ['nullable', 'array'],
+            'place.name' => ['required_with:place', 'string', 'max:100'],
+            'place.address' => ['nullable', 'string', 'max:200'],
+            'place.lat' => ['required_with:place', 'numeric', 'between:-90,90'],
+            'place.lng' => ['required_with:place', 'numeric', 'between:-180,180'],
+            'place.kakao_id' => ['nullable', 'string', 'regex:/^\d{1,20}$/'],
+            'place_detail' => ['nullable', 'required_without:place', 'string', 'max:100'],
             'starts_at' => ['required', 'date'],   // ISO 8601 (앱이 기기 시간대 포함해서 보냄)
             'capacity' => ['required', 'integer', 'between:2,10'],
             'age_rule' => ['nullable', Rule::in(['any', '20s', '30s', 'near'])],
@@ -236,6 +243,7 @@ class MeetupController extends Controller
             'starts_at' => $m->starts_at->toIso8601String(),
             'area_label' => $m->area_label,
             'place_detail' => $isMember ? $m->place_detail : null,
+            'place' => $isMember ? $m->placeInfo() : null,
             'capacity' => $m->capacity,
             'joined_count' => $joined->count(),
             'members' => $this->members($joined, $m, $me),

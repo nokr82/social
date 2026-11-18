@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Services\Identity\FakeIdentityVerifier;
 use App\Services\Identity\IdentityVerifier;
 use App\Services\Identity\PassIdentityVerifier;
+use App\Services\Place\FakePlaceSearch;
+use App\Services\Place\KakaoPlaceSearch;
+use App\Services\Place\PlaceSearch;
 use App\Services\Plaza\ArrayPlazaPresence;
 use App\Services\Plaza\PlazaPresence;
 use App\Services\Plaza\RedisPlazaPresence;
@@ -38,6 +41,11 @@ class AppServiceProvider extends ServiceProvider
             'kakao' => new KakaoRegionResolver,
             default => new FakeRegionResolver,
         });
+
+        // 번개 장소 검색: 운영은 카카오, 개발·테스트는 가짜(외부 호출 없음)
+        $this->app->singleton(PlaceSearch::class, fn () => config('social.drivers.place') === 'kakao'
+            ? new KakaoPlaceSearch
+            : new FakePlaceSearch);
     }
 
     public function boot(): void
@@ -52,6 +60,14 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->isProduction() && ! in_array(config('social.drivers.region'), ['boundary', 'kakao'], true)) {
             throw new RuntimeException('운영환경에서는 REGION_DRIVER=boundary(또는 kakao)가 필요합니다.');
         }
+
+        // 운영에서 가짜 장소(검색어+'1호점')가 나가면 안 됨
+        if ($this->app->isProduction() && config('social.drivers.place') !== 'kakao') {
+            throw new RuntimeException('운영환경에서는 PLACE_DRIVER=kakao가 필요합니다.');
+        }
+
+        // 장소 검색: 입력 중 0.3초마다 부르므로 분당 30회면 충분 (카카오 무료 쿼터 보호)
+        RateLimiter::for('place-search', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));
 
         // 채팅 도배 방지: 사용자당 분당 30개
         RateLimiter::for('chat', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));

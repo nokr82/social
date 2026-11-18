@@ -38,8 +38,17 @@ const [whenDay, whenTime] = [
     computed(() => room.value ? meetupWhen(room.value.starts_at).split(' ')[0] : ''),
     computed(() => room.value ? meetupWhen(room.value.starts_at).split(' ').slice(2).join(' ') : ''),
 ];
-// 지도 SDK 없이 카카오맵 검색으로 열기 (정확한 장소 이름 기준)
-const mapUrl = computed(() => room.value?.place_detail ? `https://map.kakao.com/?q=${encodeURIComponent(room.value.place_detail)}` : null);
+// 고른 장소면 카카오 장소 페이지(길찾기 포함), 직접 입력이면 그 글자로 카카오맵 검색 — 둘 다 지도 SDK 없이
+const mapUrl = computed(() => {
+    if (room.value?.place) return room.value.place.map_url;
+    return room.value?.place_detail ? `https://map.kakao.com/?q=${encodeURIComponent(room.value.place_detail)}` : null;
+});
+// 카드 제목: 고른 장소 이름(+메모) 또는 직접 입력한 장소
+const placeTitle = computed(() => {
+    const r = room.value;
+    if (!r) return '';
+    return r.place ? [r.place.name, r.place_detail].filter(Boolean).join(' · ') : r.place_detail;
+});
 
 async function load() {
     try {
@@ -171,7 +180,7 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
             <div class="pin-row">
                 <span class="date"><small>{{ whenDay }}</small><b>{{ whenTime }}</b></span>
                 <span class="col">
-                    <b>{{ room.place_detail }}</b>
+                    <b>{{ placeTitle }}</b>
                     <small>{{ until(room.starts_at) }} · 도착 {{ arrivedN }}/{{ room.joined_count }}명</small>
                 </span>
                 <a v-if="mapUrl" class="map" :href="mapUrl" target="_blank" rel="noopener" aria-label="지도 보기">

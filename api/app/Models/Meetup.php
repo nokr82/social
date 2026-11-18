@@ -21,14 +21,39 @@ class Meetup extends Model
 
     protected $fillable = [
         'plaza_id', 'host_id', 'title', 'description', 'area_label', 'place_detail',
+        'place_name', 'place_address', 'place_lat', 'place_lng', 'place_kakao_id',
         'starts_at', 'capacity', 'age_rule', 'age_min', 'age_max', 'status', 'canceled_at', 'settled_at',
     ];
 
-    protected $hidden = ['place_detail']; // 정확한 장소는 응답에서 기본 제외 (참여자에게만 따로)
+    // 정확한 장소(메모·고른 장소)는 응답에서 기본 제외 (참여자에게만 따로)
+    protected $hidden = ['place_detail', 'place_name', 'place_address', 'place_lat', 'place_lng', 'place_kakao_id'];
 
     protected function casts(): array
     {
-        return ['starts_at' => 'datetime', 'canceled_at' => 'datetime', 'settled_at' => 'datetime'];
+        return ['starts_at' => 'datetime', 'canceled_at' => 'datetime', 'settled_at' => 'datetime',
+            'place_lat' => 'float', 'place_lng' => 'float'];
+    }
+
+    /**
+     * 참여자용 장소 정보 (카카오 검색으로 고른 경우만, 직접 입력이면 null).
+     * 지도 링크는 카카오 장소 페이지(길찾기 포함) → 지도 SDK·JS 키 쿼터를 쓰지 않음
+     */
+    public function placeInfo(): ?array
+    {
+        if ($this->place_name === null) {
+            return null;
+        }
+        $mapUrl = $this->place_kakao_id
+            ? 'https://place.map.kakao.com/'.$this->place_kakao_id
+            : 'https://map.kakao.com/link/map/'.rawurlencode($this->place_name).','.$this->place_lat.','.$this->place_lng;
+
+        return [
+            'name' => $this->place_name,
+            'address' => $this->place_address,
+            'lat' => $this->place_lat,
+            'lng' => $this->place_lng,
+            'map_url' => $mapUrl,
+        ];
     }
 
     public function plaza(): BelongsTo

@@ -2,12 +2,16 @@
 /**
  * 번개 만들기 (디자인: BungaeCreate.dc.html)
  * - 광장에 연결되어 올라감 · 48시간 이내 약속만
- * - 대략 위치(공개) / 정확한 장소(참여 확정자만)
+ * - 장소: 카카오 장소 검색으로 고르기(서버 /places/search 경유) → 대략 위치 자동 채움.
+ *   검색에 없으면 '직접 입력'. 고른 장소·메모는 참여 확정자만, 대략 위치는 모두에게
+ * - 고를 수 있는 범위는 서버가 정함(주민 광장 5km·동네 광장 같은 구·자유광장 제한 없음), 생성 때 다시 확인
  * - 인원 나 포함 2~10명 · 나이 조건 선택
  */
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import PlaceMap from '../components/PlaceMap.vue';
 import { ApiError, get, post } from '../lib/api';
+import { getLocation } from '../lib/location';
 import { showToast } from '../lib/toast';
 
 const props = defineProps({ plazaId: { type: String, required: true } });
@@ -20,6 +24,69 @@ const form = reactive({
 });
 const busy = ref(false);
 const error = ref('');
+
+// ── 장소 검색 ──
+const placeQuery = ref('');
+const results = ref([]);
+const searching = ref(false);
+const searchMsg = ref('');
+const picked = ref(null);          // 고른 장소 {kakao_id, name, address, jibun, lat, lng, ...}
+const manual = ref(false);         // '직접 입력' 모드
+const areaTouched = ref(false);    // 대략 위치를 직접 고쳤으면 자동 채우기로 덮어쓰지 않음
+let myPos = null;                  // 진짜 위치일 때만 (기본 위치 좌표는 서버에 보내지 않는 원칙)
+let timer = null;
+let seq = 0;                       // 늦게 온 옛 검색 응답 버리기
+
+watch(placeQuery, (q) => {
+    clearTimeout(timer);
+    searchMsg.value = '';
+    if (!q.trim()) { results.value = []; return; }
+    timer = setTimeout(() => searchPlaces(q.trim()), 300); // 입력이 0.3초 멈추면 검색 (쿼터 절약)
+});
+
+async function searchPlaces(q) {
+    const my = ++seq;
+    searching.value = true;
+    const params = new URLSearchParams({ q, plaza_id: props.plazaId });
+    if (myPos) { params.set('lat', myPos.lat); params.set('lng', myPos.lng); }
+    try {
+        const res = await get(`/places/search?${params}`);
+        if (my !== seq) return;
+        results.value = res.data;
+        searchMsg.value = res.data.length ? '' : '이 광장 근처에서 찾지 못했어요. 다른 이름으로 찾거나 직접 입력해 주세요';
+    } catch (e) {
+        if (my !== seq) return;
+        results.value = [];
+        searchMsg.value = e instanceof ApiError ? e.message : '장소를 찾지 못했어요';
+    } finally {
+        if (my === seq) searching.value = false;
+    }
+}
+
+/** 지번 주소에서 동·읍·면 이름 → '역삼동 근처' (도로명 주소엔 동 이름이 없어서 지번 사용) */
+function areaFrom(p) {
+    const dong = (p.jibun || p.address || '').split(' ').find((w) => /(동|읍|면|가)$/.test(w) && !/^\d/.test(w));
+    return dong ? `${dong} 근처` : '';
+}
+
+function pick(p) {
+    seq++; // 아직 오는 중인 검색 응답이 목록을 다시 채우지 않게
+    picked.value = p;
+    results.value = [];
+    placeQuery.value = '';
+    if (!areaTouched.value || !form.area.trim()) form.area = areaFrom(p) || form.area;
+}
+
+function unpick() {
+    picked.value = null;
+}
+
+function toggleManual() {
+    manual.value = !manual.value;
+    if (manual.value) picked.value = null;
+}
+
+onBeforeUnmount(() => clearTimeout(timer));
 
 const AGES = [
     { id: 'any', label: '누구나' }, { id: '20s', label: '20대' },
@@ -46,7 +113,9 @@ const timeError = computed(() => {
     if (diff > 48 * 3600e3) return '48시간 이내 약속만 열 수 있어요';
     return '';
 });
-const valid = computed(() => form.title.trim().length >= 2 && form.area.trim() && form.place.trim() && !timeError.value);
+// 장소: 고른 장소가 있거나, 직접 입력이면 정확한 장소 글자가 있어야 함 (서버도 같은 규칙)
+const placeOk = computed(() => (manual.value ? !!form.place.trim() : !!picked.value));
+const valid = computed(() => form.title.trim().length >= 2 && form.area.trim() && placeOk.value && !timeError.value);
 
 async function submit() {
     if (!valid.value || busy.value) return;
@@ -57,7 +126,14 @@ async function submit() {
             title: form.title.trim(),
             description: form.description.trim() || null,
             area_label: form.area.trim(),
-            place_detail: form.place.trim(),
+            place_detail: form.place.trim() || null,
+            place: !manual.value && picked.value ? {
+                name: picked.value.name,
+                address: picked.value.address,
+                lat: picked.value.lat,
+                lng: picked.value.lng,
+                kakao_id: picked.value.kakao_id,
+            } : null,
             starts_at: startsAt.value.toISOString(), // UTC ISO — 서버가 시간대 포함해서 해석
             capacity: form.capacity,
             age_rule: form.age,
@@ -71,6 +147,7 @@ async function submit() {
 }
 
 onMounted(async () => {
+    getLocation().then((l) => { if (!l.fallback) myPos = { lat: l.lat, lng: l.lng }; });
     try { plazaName.value = (await get(`/plazas/${props.plazaId}`)).data.name; } catch { /* 이름 없이 진행 */ }
 });
 </script>
@@ -110,16 +187,52 @@ onMounted(async () => {
 
             <div class="field">
                 <span class="label">어디서</span>
+
+                <!-- 1) 장소 검색 → 고르기 -->
+                <template v-if="!manual">
+                    <div v-if="picked" class="picked">
+                        <div class="picked-head">
+                            <span class="col">
+                                <b>{{ picked.name }}</b>
+                                <small>{{ picked.address }}</small>
+                            </span>
+                            <button class="change" @click="unpick">바꾸기</button>
+                        </div>
+                        <PlaceMap :lat="picked.lat" :lng="picked.lng" :height="120" />
+                    </div>
+                    <div v-else class="search">
+                        <label class="search-box">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6785" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+                            <span class="sr-only">장소 검색</span>
+                            <input v-model="placeQuery" type="search" maxlength="40" placeholder="가게·역 이름으로 찾기" enterkeyhint="search">
+                        </label>
+                        <ul v-if="results.length" class="results" role="listbox" aria-label="장소 검색 결과">
+                            <li v-for="p in results" :key="p.kakao_id">
+                                <button class="result" role="option" @click="pick(p)">
+                                    <span class="col">
+                                        <b>{{ p.name }}</b>
+                                        <small>{{ [p.category, p.address].filter(Boolean).join(' · ') }}</small>
+                                    </span>
+                                    <span v-if="p.distance_label" class="dist">{{ p.distance_label }}</span>
+                                </button>
+                            </li>
+                        </ul>
+                        <span v-else-if="searching" class="hint">찾는 중…</span>
+                        <span v-else-if="searchMsg" class="hint">{{ searchMsg }}</span>
+                    </div>
+                </template>
+                <button class="manual-link" @click="toggleManual">{{ manual ? '장소 검색으로 고르기' : '검색에 없나요? 직접 입력' }}</button>
+
                 <label class="sub">
                     <span>대략적인 위치 · 모두에게 보여요</span>
-                    <input v-model="form.area" class="input" maxlength="40" placeholder="예) 역삼역 근처">
+                    <input v-model="form.area" class="input" maxlength="40" placeholder="예) 역삼역 근처" @input="areaTouched = true">
                 </label>
                 <label class="sub">
                     <span class="lock">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B6785" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
-                        정확한 장소 · 참여 확정자에게만 보여요
+                        {{ manual ? '정확한 장소' : '만날 곳 메모 (선택)' }} · 참여 확정자에게만 보여요
                     </span>
-                    <input v-model="form.place" class="input" maxlength="100" placeholder="가게 이름이나 출구 번호">
+                    <input v-model="form.place" class="input" maxlength="100" :placeholder="manual ? '가게 이름이나 출구 번호' : '예) 2번 출구 앞, 창가 자리'">
                 </label>
             </div>
 
@@ -194,6 +307,20 @@ textarea { border: 1.5px solid var(--c-line); border-radius: 14px; padding: 12px
 .minus { background: var(--c-primary-soft); }
 .plus { background: var(--c-primary); }
 .stepper span { width: 40px; text-align: center; font-size: 18px; font-weight: 700; }
+.search { display: flex; flex-direction: column; gap: 6px; }
+.search-box { height: 52px; border: 1.5px solid var(--c-line); border-radius: 14px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: var(--c-surface); }
+.search-box:focus-within { border-color: var(--c-primary); }
+.search-box input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 15px; color: var(--c-ink); }
+.results { list-style: none; margin: 0; padding: 4px 0; border: 1.5px solid var(--c-line); border-radius: 14px; background: var(--c-surface); max-height: 280px; overflow-y: auto; }
+.result { width: 100%; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; border: none; background: none; text-align: left; }
+.result:active { background: var(--c-primary-soft); }
+.result b, .picked b { font-size: 14px; color: var(--c-ink); }
+.result small, .picked small { font-size: 12px; color: var(--c-muted); }
+.dist { flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--c-primary-deep); }
+.picked { border: 1.5px solid var(--c-primary); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--c-surface); }
+.picked-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.change { flex-shrink: 0; height: 36px; padding: 0 12px; border: 1.5px solid var(--c-line); border-radius: 18px; background: var(--c-surface); font-size: 13px; color: var(--c-ink-2); }
+.manual-link { align-self: flex-start; border: none; background: none; padding: 4px 0; font-size: 13px; color: var(--c-primary-deep); text-decoration: underline; }
 .err-box { margin: 0; font-size: 13px; color: var(--c-danger); }
 .bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 20px 26px; background: var(--c-surface); border-top: 1px solid var(--c-divider); }
 </style>

@@ -46,6 +46,7 @@ return [
     'meetup' => [
         'max_open_per_host' => 3,        // 동시에 열 수 있는 번개 수
         'search_radius_m' => 5000,       // 번개 탭 '내 주변'
+        'place_max_m' => 5000,           // 주민 광장 번개 장소는 광장에서 이 거리 안 (동네 광장은 같은 시·군·구, 자유광장은 제한 없음)
     ],
 
     // 아바타 파츠 (앱 디자인의 선택지와 1:1)
@@ -133,5 +134,7 @@ return [
         // kakao    : 예비. 카카오 로컬 API로 법정동 판단 (카카오맵 사용 설정 필요, 코드 체계가 boundary와 다름)
         // fake     : 개발·테스트용 (운영 부팅 차단)
         'region' => env('REGION_DRIVER', 'fake'),
+        // 번개 장소 검색. kakao: 카카오 로컬 키워드 검색(KAKAO_REST_API_KEY, 카카오맵 사용 설정 필요) · fake: 개발·테스트 (운영 부팅 차단)
+        'place' => env('PLACE_DRIVER', 'fake'),
     ],
 ];

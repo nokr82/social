@@ -14,6 +14,7 @@ use App\Models\NoshowVote;
 use App\Models\Plaza;
 use App\Models\TrustScore;
 use App\Models\User;
+use App\Services\Place\PlaceService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +29,8 @@ use Illuminate\Support\Facades\DB;
  */
 class MeetupService
 {
+    public function __construct(private readonly PlaceService $places) {}
+
     /** 나이 조건 → 실제 범위. near는 호스트 나이 ±5 */
     public function ageRange(string $rule, int $hostAge): array
     {
@@ -56,16 +59,28 @@ class MeetupService
             throw new DomainException('TOO_MANY_MEETUPS', '번개는 동시에 '.config('social.meetup.max_open_per_host').'개까지 열 수 있어요', 409);
         }
 
+        // 카카오 검색으로 고른 장소: 이 광장 번개로 열 수 있는 곳인지 서버가 다시 확인 (화면 우회·좌표 조작 방지)
+        $place = $data['place'] ?? null;
+        if ($place) {
+            $this->places->assertReachable($plaza, (float) $place['lat'], (float) $place['lng']);
+        }
+
         [$min, $max] = $this->ageRange($data['age_rule'] ?? 'any', $host->identity->age());
 
-        return DB::transaction(function () use ($host, $plaza, $data, $startsAt, $min, $max) {
+        return DB::transaction(function () use ($host, $plaza, $data, $place, $startsAt, $min, $max) {
             $meetup = Meetup::create([
                 'plaza_id' => $plaza->id,
                 'host_id' => $host->id,
                 'title' => $data['title'],
                 'description' => $data['description'] ?? null,
                 'area_label' => $data['area_label'],
-                'place_detail' => $data['place_detail'],
+                // 장소를 골랐으면 메모(출구·자리 등)는 선택, 직접 입력이면 이게 곧 정확한 장소
+                'place_detail' => filled($data['place_detail'] ?? null) ? $data['place_detail'] : null,
+                'place_name' => $place['name'] ?? null,
+                'place_address' => $place['address'] ?? null,
+                'place_lat' => $place['lat'] ?? null,
+                'place_lng' => $place['lng'] ?? null,
+                'place_kakao_id' => $place['kakao_id'] ?? null,
                 'starts_at' => $startsAt,
                 'capacity' => $data['capacity'],
                 'age_rule' => $data['age_rule'] ?? 'any',
