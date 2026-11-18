@@ -45,10 +45,20 @@ let idleTimer = null;
 let searchTimer = null;
 let addrSeq = 0;
 let searchSeq = 0;
-let center = null;
+
+// 핀 위치는 버튼 활성화(computed)에 쓰이므로 반드시 ref. 일반 변수였을 때 첫 계산이 null에서 멈춰
+// 의존성이 하나도 안 잡혀 '이 위치로 정하기'가 영원히 안 눌렸음 (2026-11-18)
+const center = ref(null);
 
 const reachable = computed(() => addr.value?.reachable !== false);
-const canConfirm = computed(() => !!center && !moving.value && !loadingAddr.value && !!addr.value && reachable.value && !!name.value.trim());
+const nameMissing = computed(() => !!addr.value && !name.value.trim());
+const canConfirm = computed(() => !!center.value && !moving.value && !loadingAddr.value && !!addr.value && reachable.value && !nameMissing.value);
+const buttonText = computed(() => {
+    if (moving.value || loadingAddr.value) return '위치 확인 중…';
+    if (addr.value && !reachable.value) return outOfRangeText.value;
+    if (nameMissing.value) return '장소 이름을 적어 주세요';
+    return '이 위치로 정하기';
+});
 const outOfRangeText = computed(() => (scope.value?.kind === 'town' ? '이 동네 밖이에요' : '광장에서 5km 밖이에요'));
 
 /** 두 좌표가 거의 같은지 (약 5m) — 검색 결과로 이동한 직후의 idle인지 판단 */
@@ -58,10 +68,10 @@ function near(a, b) {
 
 async function onIdle() {
     const c = map.getCenter();
-    center = { lat: c.getLat(), lng: c.getLng() };
+    center.value = { lat: c.getLat(), lng: c.getLng() };
     moving.value = false;
     // 핀을 검색 결과에서 움직였으면 더 이상 그 가게가 아님 → 장소 id·이름 해제
-    if (fromSearch.value && !near(center, fromSearch.value)) {
+    if (fromSearch.value && !near(center.value, fromSearch.value)) {
         fromSearch.value = null;
         if (!nameTouched.value) name.value = '';
     }
@@ -72,13 +82,14 @@ async function onIdle() {
 async function fetchAddress() {
     const my = ++addrSeq;
     loadingAddr.value = true;
-    const q = new URLSearchParams({ plaza_id: props.plazaId, lat: center.lat, lng: center.lng });
+    const q = new URLSearchParams({ plaza_id: props.plazaId, lat: center.value.lat, lng: center.value.lng });
     try {
         const res = (await get(`/places/address?${q}`)).data;
         if (my !== addrSeq) return;
         addr.value = res;
         // 이름 자동 채우기: 검색으로 고른 가게 > 건물 이름 (직접 고친 이름은 덮지 않음)
-        if (!nameTouched.value && !fromSearch.value) name.value = res.building_name ?? '';
+        // 건물 이름이 없으면(카카오는 자주 비어 있음) 도로명 뒷부분('테헤란로 211')으로 — 이름이 비어 버튼이 막히지 않게
+        if (!nameTouched.value && !fromSearch.value) name.value = res.building_name ?? shortAddress(res);
     } catch (e) {
         if (my !== addrSeq) return;
         addr.value = null;
@@ -86,6 +97,12 @@ async function fetchAddress() {
     } finally {
         if (my === addrSeq) loadingAddr.value = false;
     }
+}
+
+/** '서울 강남구 테헤란로 211' → '테헤란로 211' (시·도, 시·군·구 빼고) */
+function shortAddress(a) {
+    const words = (a?.address || a?.jibun || '').split(' ');
+    return words.length > 2 ? words.slice(2).join(' ') : words.join(' ');
 }
 
 function moveTo(lat, lng) {
@@ -132,7 +149,7 @@ function pickResult(p) {
         moveTo(p.lat, p.lng);
     } else {
         // 지도 없는 모드: 검색 결과를 그대로 장소로 (검색 결과는 이미 범위 안만 옴)
-        center = { lat: p.lat, lng: p.lng };
+        center.value = { lat: p.lat, lng: p.lng };
         addr.value = { address: p.address, jibun: p.jibun, building_name: null, reachable: true };
     }
 }
@@ -151,8 +168,8 @@ function confirm() {
         name: name.value.trim(),
         address: f?.address || addr.value.address || addr.value.jibun,
         jibun: f?.jibun || addr.value.jibun,
-        lat: f ? f.lat : center.lat,
-        lng: f ? f.lng : center.lng,
+        lat: f ? f.lat : center.value.lat,
+        lng: f ? f.lng : center.value.lng,
         kakao_id: f?.kakao_id ?? null,
     });
 }
@@ -251,9 +268,7 @@ onBeforeUnmount(() => {
                 <template v-else-if="addr">{{ addr.address || addr.jibun || '주소 없는 곳이에요' }}</template>
                 <template v-else>&nbsp;</template>
             </p>
-            <button class="btn-primary" :disabled="!canConfirm" @click="confirm">
-                {{ addr && !reachable && !moving ? outOfRangeText : '이 위치로 정하기' }}
-            </button>
+            <button class="btn-primary" :disabled="!canConfirm" @click="confirm">{{ buttonText }}</button>
         </div>
     </div>
 </template>
