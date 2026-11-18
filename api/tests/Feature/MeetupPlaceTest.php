@@ -103,6 +103,7 @@ class MeetupPlaceTest extends TestCase
         $id = $this->create($this->plaza, ['place' => $this->place(37.5016, 127.0374)])->assertCreated()
             ->assertJsonPath('data.place.name', '스타벅스 역삼역점')
             ->assertJsonPath('data.place.map_url', 'https://place.map.kakao.com/12345')
+            ->assertJsonPath('data.place.kakao_id', '12345') // 화면이 카카오맵 앱 장소 상세(kakaomap://place?id=)로 열 때 사용
             ->assertJsonPath('data.place_detail', null)
             ->json('data.id');
 

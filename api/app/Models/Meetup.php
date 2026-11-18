@@ -52,7 +52,8 @@ class Meetup extends Model
             'address' => $this->place_address,
             'lat' => $this->place_lat,
             'lng' => $this->place_lng,
-            'map_url' => $mapUrl,
+            'map_url' => $mapUrl,                 // 웹 주소 (앱이 없을 때·PC)
+            'kakao_id' => $this->place_kakao_id,  // 있으면 화면이 카카오맵 앱의 장소 상세로 바로 엶
         ];
     }
 

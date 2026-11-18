@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
 import { ApiError, del, get, post } from '../lib/api';
 import PlaceMap from '../components/PlaceMap.vue';
+import { kakaoMapLinks, openKakaoMap } from '../lib/kakaoMapLink';
 import { shareLink } from '../lib/share';
 import { meetupWhen, until } from '../lib/time';
 import { showToast } from '../lib/toast';
@@ -119,7 +120,8 @@ onMounted(load);
                         <small>{{ m.place.address }}</small>
                         <small v-if="m.place_detail" class="memo">{{ m.place_detail }}</small>
                         <PlaceMap :lat="m.place.lat" :lng="m.place.lng" :height="130" class="place-map" />
-                        <a class="map-link" :href="m.place.map_url" target="_blank" rel="noopener">카카오맵에서 보기 · 길찾기</a>
+                        <!-- href는 웹 주소(길게 눌러 복사·앱 없는 경우), 누르면 앱이 있으면 앱으로 -->
+                        <a class="map-link" :href="m.place.map_url" target="_blank" rel="noopener" @click.prevent="openKakaoMap(kakaoMapLinks({ place: m.place }))">카카오맵에서 보기 · 길찾기</a>
                         <small class="ok">참여 확정! 정확한 장소가 공개됐어요</small>
                     </span>
                     <span v-else class="v">

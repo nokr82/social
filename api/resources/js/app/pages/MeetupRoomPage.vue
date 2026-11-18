@@ -17,6 +17,7 @@ import { auth } from '../lib/auth';
 import { connectEcho } from '../lib/echo';
 import { ago, meetupWhen, until } from '../lib/time';
 import { sendChatImage } from '../lib/chatAttach';
+import { kakaoMapLinks, openKakaoMap } from '../lib/kakaoMapLink';
 import { showToast } from '../lib/toast';
 
 const props = defineProps({ id: { type: String, required: true } });
@@ -38,10 +39,10 @@ const [whenDay, whenTime] = [
     computed(() => room.value ? meetupWhen(room.value.starts_at).split(' ')[0] : ''),
     computed(() => room.value ? meetupWhen(room.value.starts_at).split(' ').slice(2).join(' ') : ''),
 ];
-// 고른 장소면 카카오 장소 페이지(길찾기 포함), 직접 입력이면 그 글자로 카카오맵 검색 — 둘 다 지도 SDK 없이
-const mapUrl = computed(() => {
-    if (room.value?.place) return room.value.place.map_url;
-    return room.value?.place_detail ? `https://map.kakao.com/?q=${encodeURIComponent(room.value.place_detail)}` : null;
+// 카카오맵 앱(있으면)·웹 주소: 고른 장소면 장소 상세/좌표, 글로만 적은 장소면 그 글자로 검색
+const mapLinks = computed(() => {
+    if (room.value?.place) return kakaoMapLinks({ place: room.value.place });
+    return room.value?.place_detail ? kakaoMapLinks({ query: room.value.place_detail }) : null;
 });
 // 카드 제목: 고른 장소 이름(+메모) 또는 직접 입력한 장소
 const placeTitle = computed(() => {
@@ -183,7 +184,7 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
                     <b>{{ placeTitle }}</b>
                     <small>{{ until(room.starts_at) }} · 도착 {{ arrivedN }}/{{ room.joined_count }}명</small>
                 </span>
-                <a v-if="mapUrl" class="map" :href="mapUrl" target="_blank" rel="noopener" aria-label="지도 보기">
+                <a v-if="mapLinks" class="map" :href="mapLinks.web" target="_blank" rel="noopener" aria-label="카카오맵에서 보기" @click.prevent="openKakaoMap(mapLinks)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>
                 </a>
             </div>
