@@ -102,7 +102,8 @@ class PlazaService
                 ->values();
         }
         // 카드의 🔒 표시용. 실제 입장 판단은 enter()가 다시 한다 (화면 값은 믿지 않음)
-        $plazas->each(fn (Plaza $p) => $p->can_enter = $hasLocation && $p->distance_m <= $radius);
+        // 좌표가 없으면 '모름'(null) — false로 두면 "5km 밖"과 구분이 안 됨 (API 문서: 좌표 없으면 null)
+        $plazas->each(fn (Plaza $p) => $p->can_enter = $hasLocation ? $p->distance_m <= $radius : null);
 
         $plazas = $this->attachLive($plazas);
 

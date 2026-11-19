@@ -475,9 +475,14 @@ class PlazaTest extends TestCase
 
     /* ---------------- 참여 유지 · 나가기 · 채팅 탭 광장 ---------------- */
 
+    /**
+     * 채팅 탭 '광장'의 광장 id 목록.
+     * 주의: array_column은 'plaza.id' 같은 점 표기를 못 읽어 늘 []을 돌려줬음 → '빈 목록' 검사가 전부 그냥 통과했었다 (2026-11-19 발견).
+     * pluck은 점 표기로 안쪽 값을 읽는다.
+     */
     private function joinedIds(User $u): array
     {
-        return array_column($this->actingAs($u)->getJson('/api/me/plazas')->assertOk()->json('data'), 'plaza.id');
+        return collect($this->actingAs($u)->getJson('/api/me/plazas')->assertOk()->json('data'))->pluck('plaza.id')->all();
     }
 
     /** 화면을 떠나도(leave) 참여 유지, 나가기(quit)를 눌러야 빠짐. 참여 중이면 어디서든 다시 들어옴 */
@@ -595,7 +600,8 @@ class PlazaTest extends TestCase
         $this->actingAs($host)->postJson("{$url}/messages", ['body' => '셋'])->assertCreated();
         $this->assertSame(1, $this->actingAs($me)->getJson('/api/me/plazas')->json('data.0.unread'));
 
-        // 강퇴되면 참여에서 빠짐
+        // 강퇴되면 참여에서 빠짐 (먼저 '있음'을 확인 — 빈 목록 검사가 헛돌지 않게)
+        $this->assertSame([$plaza->id], $this->joinedIds($me));
         $this->actingAs($host)->postJson("{$url}/kick", ['user_id' => $me->id, 'reason' => 'spam'])->assertOk();
         $this->assertSame([], $this->joinedIds($me));
     }
@@ -625,6 +631,7 @@ class PlazaTest extends TestCase
         $left = PlazaMember::where('plaza_id', $plaza->id)->pluck('user_id')->sort()->values()->all();
         $this->assertSame(collect([$host->id, $active->id])->sort()->values()->all(), $left);
         $this->assertSame([], $this->joinedIds($idle));
+        $this->assertSame([$plaza->id], $this->joinedIds($active)); // 남은 사람은 목록에 있음 (헬퍼가 빈 값만 내는 게 아님)
     }
 
     /** 대화 읽기도 입장과 같은 기준: 참여자·방장만. 강퇴·나가기·참여 안 함·닫힘이면 못 읽음 */
