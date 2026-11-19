@@ -144,13 +144,8 @@ class TownService
         $ids = array_slice($ids, 0, $want);
         $avatars = Avatar::whereIn('user_id', $ids)->get()->keyBy('user_id');
 
-        // 최근 말풍선 (10분 이내, 차단 관계 제외)
-        $bubbles = $town->chatRoom()->first()?->messages()
-            ->where('type', ChatMessage::TEXT)
-            ->where('created_at', '>=', now()->subMinutes(10))
-            ->whereNotIn('sender_id', $blocked)
-            ->orderByDesc('id')->limit(2)->pluck('body')
-            ->map(fn ($b) => mb_strimwidth($b, 0, 18, '…'))->values()->all() ?? [];
+        // 최근 10분 대화가 있었는지만 (내용은 보내지 않음 — 구역·채널 안 사람만 대화를 읽는 원칙, 2026-11-19)
+        $chatting = (bool) $town->last_message_at?->gt(now()->subMinutes(10));
 
         // 여기 있는 친구 (차단 관계 제외)
         $friendIds = Friendship::where('user_id', $viewer->id)->pluck('friend_id')
@@ -166,7 +161,7 @@ class TownService
             'description' => $town->description,
             'live_count' => array_sum(array_map('array_sum', $occupancy)),
             'preview_avatars' => collect($ids)->map(fn ($id) => $avatars->get($id)?->parts)->filter()->values()->all(),
-            'bubbles' => $bubbles,
+            'chatting' => $chatting,
             'friends' => ['count' => count($friendsHere), 'avatars' => $friendAvatars],
         ];
     }
@@ -291,7 +286,7 @@ class TownService
             'sender_id' => $sender->id,
             'body' => $body,
         ]);
-        $town->forceFill(['last_message_at' => now(), 'last_message_body' => mb_strimwidth($body, 0, 40, '…')])->saveQuietly();
+        $town->forceFill(['last_message_at' => now()])->saveQuietly(); // '대화 중' 표시용 시각만 (내용은 저장 안 함)
         $this->presence->touch($space, $sender->id);
 
         broadcast(new TownMessageSent($town->id, $zone, $channel, $message->load('sender.avatar')))->toOthers();

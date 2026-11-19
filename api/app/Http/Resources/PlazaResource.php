@@ -27,8 +27,8 @@ class PlazaResource extends JsonResource
             'is_live' => ($this->live_count ?? 0) > 0,
             'capacity' => $this->capacity,
             'preview_avatars' => $this->preview_avatars ?? [],
-            // 10분 안에 올라온 메시지만 '지금 하는 말'로 보여줌 (오래된 말풍선은 숨김)
-            'last_message' => $this->last_message_at?->gt(now()->subMinutes(10)) ? $this->last_message_body : null,
+            // 최근 10분 안에 대화가 있었는지만 (내용은 안 보냄 — 광장 대화는 참여자만 읽는 원칙, 2026-11-19)
+            'chatting' => (bool) $this->last_message_at?->gt(now()->subMinutes(10)),
             'host_id' => (int) $this->host_id, // 광장 안에서 방장 아바타에 왕관 표시용 (아바타 id와 비교)
             'is_host' => (int) $request->user()?->id === (int) $this->host_id,
             'status' => $this->status,

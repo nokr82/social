@@ -37,7 +37,6 @@ const TOWN_SLOTS = [
     { x: 24, y: 70 }, { x: 62, y: 50 }, { x: 98, y: 86 }, { x: 132, y: 56 }, { x: 170, y: 92 },
     { x: 206, y: 62 }, { x: 244, y: 88 }, { x: 280, y: 58 }, { x: 300, y: 104 },
 ];
-const TOWN_BUBBLES = [{ x: 52, y: 22 }, { x: 196, y: 30 }]; // 최근 말풍선 2개 자리
 
 // 타일 안 아바타 자리 (디자인 시안의 배치를 그대로) — 접속자 순서대로 채운다
 const SLOTS = [
@@ -75,7 +74,7 @@ const tiles = computed(() => plazas.value.map((p, i) => ({
     ...p,
     ground: CATEGORY_GROUND[p.category] ?? '#E9E4FF',
     avatars: p.preview_avatars.slice(0, SLOTS.length).map((parts, j) => ({ parts, ...SLOTS[j] })),
-    // 말풍선 위치를 타일마다 조금씩 다르게 (디자인처럼 자연스럽게)
+    // '대화 중' 말풍선 위치를 타일마다 조금씩 다르게 (디자인처럼 자연스럽게)
     bubbleX: [14, 60, 30, 50, 20, 56][i % 6],
     meta: [p.category_label, p.distance_label].filter(Boolean).join(' · '),
     // 들어갈 수 없는 광장: 위치 권한 없음 또는 5km 밖 (서버 can_enter=false)
@@ -84,8 +83,7 @@ const tiles = computed(() => plazas.value.map((p, i) => ({
 
 const townAvatars = computed(() => (card.value?.preview_avatars ?? [])
     .slice(0, TOWN_SLOTS.length).map((parts, i) => ({ parts, ...TOWN_SLOTS[i] })));
-const townBubbles = computed(() => (card.value?.bubbles ?? [])
-    .slice(0, TOWN_BUBBLES.length).map((text, i) => ({ text, ...TOWN_BUBBLES[i] })));
+
 
 async function load({ silent = false } = {}) {
     const my = ++seq;
@@ -258,7 +256,8 @@ onBeforeUnmount(() => {
                     <span v-for="(a, i) in townAvatars" :key="i" class="ts-av" :style="{ left: `${a.x}px`, top: `${a.y}px` }">
                         <AvatarFace :parts="a.parts" :size="32" />
                     </span>
-                    <span v-for="(b, i) in townBubbles" :key="`b${i}`" class="ts-bubble" :style="{ left: `${b.x}px`, top: `${b.y}px` }">{{ b.text }}</span>
+                    <!-- 대화 내용은 밖에 안 보임: 최근 10분 대화가 있으면 '…' 말풍선만 -->
+                    <span v-if="card.chatting" class="ts-bubble typing" style="left: 120px; top: 24px" aria-label="지금 대화 중"><i /><i /><i /></span>
                 </span>
 
                 <span class="town-foot">
@@ -337,7 +336,8 @@ onBeforeUnmount(() => {
                         <span v-for="(a, j) in t.avatars" :key="j" class="av" :style="{ left: `${a.x}px`, top: `${a.y}px` }">
                             <AvatarFace :parts="a.parts" :size="30" />
                         </span>
-                        <span v-if="t.last_message" class="bubble" :style="{ left: `${t.bubbleX}px` }">{{ t.last_message }}</span>
+                        <!-- 대화 내용은 밖에 안 보임(참여자만 읽음): 최근 10분 대화가 있으면 '…' 말풍선만 -->
+                        <span v-if="t.chatting" class="bubble typing" :style="{ left: `${t.bubbleX}px` }" aria-label="지금 대화 중"><i /><i /><i /></span>
                         <span class="live"><i />{{ t.live_count }}명</span>
                         <span v-if="t.locked" class="lock">🔒 {{ noLocation ? '위치 필요' : '5km 밖' }}</span>
                     </span>
@@ -418,6 +418,12 @@ onBeforeUnmount(() => {
 .stage { position: relative; display: block; height: 118px; border-radius: 16px; overflow: hidden; }
 .pad { position: absolute; left: 50%; top: 50%; width: 90px; height: 40px; margin: -20px 0 0 -45px; border-radius: 50%; background: rgba(255,255,255,.55); }
 .av { position: absolute; display: flex; }
+.typing { display: inline-flex; align-items: center; gap: 3px; padding: 6px 9px; }
+.typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--c-muted); animation: typing-dot 1.2s infinite ease-in-out; }
+.typing i:nth-child(2) { animation-delay: .15s; }
+.typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-dot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; } }
 .bubble { position: absolute; top: 10px; max-width: calc(100% - 24px); background: #fff; border-radius: 10px; padding: 3px 8px; font-size: 11px; font-weight: 700; color: var(--c-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 4px; background: rgba(31,27,58,.75); color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
 .live i { width: 6px; height: 6px; border-radius: 3px; background: #7CF2B0; }

@@ -262,21 +262,24 @@ class PlazaTest extends TestCase
         $this->assertSame($near->id, $this->actingAs($host)->getJson("/api/plazas{$q}")->json('data.0.id'));
     }
 
-    /** 타일 말풍선: 방금 한 말이 목록에 보임 */
-    public function test_list_shows_last_message_bubble(): void
+    /** 타일: 대화 내용은 밖에 안 보이고 '대화 중' 표시만 (10분) */
+    public function test_list_shows_chatting_without_content(): void
     {
         $host = User::factory()->complete()->create();
         $plaza = $this->makePlaza($host);
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG]);
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/messages", ['body' => '한판 ㄱ?'])->assertCreated();
 
-        $this->actingAs($host)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
-            ->assertJsonPath('data.0.last_message', '한판 ㄱ?');
+        $outsider = User::factory()->complete()->create();
+        $this->actingAs($outsider)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
+            ->assertJsonPath('data.0.chatting', true)
+            ->assertJsonMissingPath('data.0.last_message')
+            ->assertDontSee('한판');
 
-        $this->travel(11)->minutes(); // 10분 지나면 말풍선 숨김
+        $this->travel(11)->minutes(); // 10분 지나면 '대화 중' 표시도 끔
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk(); // 방장 부재로 숨겨지지 않게
         $this->actingAs($host)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
-            ->assertJsonPath('data.0.last_message', null);
+            ->assertJsonPath('data.0.chatting', false);
     }
 
     public function test_low_trust_user_cannot_host(): void

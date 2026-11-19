@@ -600,10 +600,8 @@ class PlazaService
             'sender_id' => $sender->id,
             'body' => $body,
         ]);
-        $plaza->forceFill([
-            'last_message_at' => now(),
-            'last_message_body' => mb_strimwidth($body, 0, 40, '…'), // 타일 말풍선용 미리보기
-        ])->saveQuietly();
+        // 목록의 '대화 중' 표시용 시각만 (내용 미리보기는 밖에 보이면 안 되므로 저장하지 않음)
+        $plaza->forceFill(['last_message_at' => now()])->saveQuietly();
         $this->presence->touch($plaza->id, $sender->id); // 말하는 사람은 살아있는 것
         $this->touchHost($sender, $plaza);
 

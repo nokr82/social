@@ -155,7 +155,7 @@ class TownTest extends TestCase
 
     /* ---------------- 메인 카드 ---------------- */
 
-    public function test_summary_shows_count_bubbles_and_friends_here(): void
+    public function test_summary_shows_count_chatting_and_friends_here(): void
     {
         [$me, $friend, $stranger] = User::factory()->count(3)->complete()->create();
         Friendship::insert([
@@ -170,12 +170,14 @@ class TownTest extends TestCase
         $card = $this->town($me);
         $this->assertSame(2, $card['live_count']);
         $this->assertCount(2, $card['preview_avatars']);
-        $this->assertSame(['점심 뭐 먹지?'], $card['bubbles']);
+        $this->assertTrue($card['chatting']);          // '대화 중' 표시만
+        $this->assertArrayNotHasKey('bubbles', $card);  // 대화 내용은 밖(메인 카드)에 안 나감
+        $this->assertStringNotContainsString('점심', json_encode($card, JSON_UNESCAPED_UNICODE));
         $this->assertSame(1, $card['friends']['count']);
 
-        // 10분 지나면 말풍선 숨김
+        // 10분 지나면 '대화 중'도 끔
         $this->travel(11)->minutes();
-        $this->assertSame([], $this->town($me)['bubbles']);
+        $this->assertFalse($this->town($me)['chatting']);
     }
 
     /* ---------------- 주민 광장 규칙과 분리 ---------------- */
