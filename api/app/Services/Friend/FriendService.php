@@ -8,6 +8,7 @@ use App\Models\FriendRequest;
 use App\Models\Friendship;
 use App\Models\User;
 use App\Services\Location\LocationShareService;
+use App\Services\Meetup\MeetupLocationService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -132,6 +133,8 @@ class FriendService
             ->delete();
         // 위치 공유도 양방향 즉시 해제 (보던 지도에서도 바로 사라짐)
         app(LocationShareService::class)->severBetween($a, $b);
+        // 번개 '모이는 중' 지도에서도 서로의 핀을 바로 지움 (이후 조회·실시간은 차단 관계로 걸러짐)
+        app(MeetupLocationService::class)->severBetween($a, $b);
     }
 
     private function assertReceiver(User $me, FriendRequest $req, string $expected): void

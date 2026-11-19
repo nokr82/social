@@ -62,6 +62,19 @@ class Notify
         ]));
     }
 
+    /** 번개 참여자가 '모이는 중' 지도에서 내 위치를 확인 (위치정보법 통보). 푸시는 번개마다 1개로 덮어씀 */
+    public static function meetupLocationViewed(User $viewer, User $sharer, Meetup $meetup): void
+    {
+        $sharer->notify(new MeetupLocationViewed([
+            'kind' => 'meetup_location_viewed',
+            'title' => '위치 확인',
+            'body' => "{$viewer->nickname}님이 '{$meetup->title}' 번개에서 내 위치를 확인했어요",
+            'url' => "/meetups/{$meetup->id}/map",
+            'actor' => AvatarSummary::of($viewer),
+            'tag' => "meetup-loc-viewed-{$meetup->id}",
+        ]));
+    }
+
     public static function meetupJoined(Meetup $meetup, User $joiner): void
     {
         if ($joiner->id === $meetup->host_id) {

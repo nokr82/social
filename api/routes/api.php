@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MeetupController;
+use App\Http\Controllers\Api\MeetupLocationController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PlazaController;
@@ -130,6 +131,11 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::post('meetups/{meetup}/arrive', [MeetupController::class, 'arrive']);
         Route::post('meetups/{meetup}/noshow', [MeetupController::class, 'noshow']);
         Route::get('meetups/{meetup}/room', [MeetupController::class, 'room']);
+        // 번개 '모이는 중' 지도: 목적지 + 위치 공유를 켠 참여자
+        Route::get('meetups/{meetup}/locations', [MeetupLocationController::class, 'board']);
+        Route::put('meetups/{meetup}/location-share', [MeetupLocationController::class, 'start']);
+        Route::delete('meetups/{meetup}/location-share', [MeetupLocationController::class, 'stop']);
+        Route::get('me/meetup-location-shares', [MeetupLocationController::class, 'mine']);
         Route::get('meetups/{meetup}/messages', [MeetupController::class, 'messages']);
         Route::post('meetups/{meetup}/messages', [MeetupController::class, 'send'])->middleware('throttle:chat');
         Route::post('meetups/{meetup}/read', [MeetupController::class, 'read']);

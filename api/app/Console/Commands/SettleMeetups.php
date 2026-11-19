@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Meetup;
+use App\Models\MeetupLocationShare;
 use App\Models\MeetupMember;
 use App\Models\TrustScore;
 use Illuminate\Console\Command;
@@ -54,7 +55,12 @@ class SettleMeetups extends Command
                 }
             });
 
-        $this->info("정산한 번개: {$settled}개");
+        // 채팅방이 닫힌 번개의 '모이는 중' 위치 공유 행 정리 (조회에서 이미 걸러지지만 테이블이 쌓이지 않게)
+        $cleared = MeetupLocationShare::whereIn('meetup_id', Meetup::query()
+            ->where(fn ($q) => $q->where('status', '!=', Meetup::OPEN)->orWhere('starts_at', '<=', now()->subHours(Meetup::ROOM_HOURS)))
+            ->select('id'))->delete();
+
+        $this->info("정산한 번개: {$settled}개 · 끝난 위치 공유 정리: {$cleared}건");
 
         return self::SUCCESS;
     }

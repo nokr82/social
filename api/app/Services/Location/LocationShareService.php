@@ -10,6 +10,7 @@ use App\Models\LocationAccessLog;
 use App\Models\LocationShare;
 use App\Models\User;
 use App\Notifications\Notify;
+use App\Services\Meetup\MeetupLocationService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -101,14 +102,16 @@ class LocationShareService
     }
 
     /**
-     * 내 위치 갱신. 볼 수 있는 친구가 없으면 저장도 전송도 하지 않는다.
+     * 내 위치 갱신. 볼 수 있는 사람(친구 공유 + 번개 '모이는 중' 공유)이 없으면 저장도 전송도 하지 않는다.
      *
      * @return array{sharing: bool, viewers: int}
      */
     public function update(User $me, float $lat, float $lng, ?float $accuracy): array
     {
         $viewerIds = $this->outgoing($me)->pluck('viewer_id')->map(fn ($id) => (int) $id)->all();
-        if (! $viewerIds) {
+        // 번개 쪽은 서로 의존(MeetupLocationService → 이 클래스)이라 생성자 대신 필요할 때 꺼냄
+        $meetupTargets = app(MeetupLocationService::class)->targets($me);
+        if (! $viewerIds && ! $meetupTargets) {
             Cache::forget($this->key($me->id));
 
             return ['sharing' => false, 'viewers' => 0];
@@ -122,9 +125,20 @@ class LocationShareService
             'at' => now()->toIso8601String(),
         ];
         Cache::put($this->key($me->id), $position, now()->addMinutes(self::LAST_TTL_MINUTES));
-        $this->broadcast(new FriendLocationUpdated($viewerIds, $position));
+        if ($viewerIds) {
+            $this->broadcast(new FriendLocationUpdated($viewerIds, $position));
+        }
+        app(MeetupLocationService::class)->broadcastPosition($me, $position, $meetupTargets);
 
-        return ['sharing' => true, 'viewers' => count($viewerIds)];
+        $all = array_unique(array_merge($viewerIds, ...array_values($meetupTargets ?: [[]])));
+
+        return ['sharing' => true, 'viewers' => count($all)];
+    }
+
+    /** 마지막 위치 (번개 '모이는 중' 지도도 같은 캐시를 씀) */
+    public function lastPosition(int $userId): ?array
+    {
+        return Cache::get($this->key($userId));
     }
 
     /**

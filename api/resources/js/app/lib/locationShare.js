@@ -1,11 +1,11 @@
 /**
  * 내 위치 공유 (보내는 쪽).
- * 로그인 후 App.vue가 start()를 부르면, 공유 중인 친구가 있을 때만 위치를 지켜보며 서버로 보낸다.
+ * 로그인 후 App.vue가 start()를 부르면, 공유 중인 친구나 '모이는 중' 공유를 켠 번개가 있을 때만 위치를 지켜보며 서버로 보낸다.
  *
  * 보내는 규칙
  * - 50m 이상 움직였으면 바로 (단, 10초에 1번까지)
  * - 제자리여도 30초마다 1번 ('방금' 표시가 유지되게)
- * - 공유 중인 친구가 없으면(끔·만료) 위치 감시 자체를 멈춘다 → 배터리·권한 사용 최소화
+ * - 공유 대상(친구·번개)이 없으면(끔·만료·채팅방 닫힘) 위치 감시 자체를 멈춘다 → 배터리·권한 사용 최소화
  * 제약: 웹앱이라 화면이 꺼지거나 다른 앱으로 가면 브라우저가 멈춘다 (친구 지도엔 'N분 전'으로 보임)
  */
 import { reactive } from 'vue';
@@ -16,8 +16,12 @@ const SEND_EVERY_MS = 30_000;
 const MIN_GAP_MS = 10_000;
 const MOVE_M = 50;
 
-/** shares: [{user, until}] 내가 공유 중인 친구, denied: 위치 권한 거부됨 */
-export const locShare = reactive({ shares: [], denied: false });
+/**
+ * shares: [{user, until}] 내가 공유 중인 친구
+ * meetups: [{meetup_id, title, closes_at}] '모이는 중' 위치 공유를 켠 번개 (채팅방 닫히면 서버가 빼줌)
+ * denied: 위치 권한 거부됨
+ */
+export const locShare = reactive({ shares: [], meetups: [], denied: false });
 
 let watchId = null;
 let ticker = null;
@@ -31,16 +35,32 @@ export async function startLocationShare() {
 
 export function stopLocationShare() {
     locShare.shares = [];
+    locShare.meetups = [];
     clearTimeout(expiryTimer);
     stopWatch();
 }
 
 export async function refreshShares() {
     try {
-        setShares((await get('/location/shares')).data);
+        const [friends, meetups] = await Promise.all([get('/location/shares'), get('/me/meetup-location-shares')]);
+        locShare.meetups = meetups.data;
+        setShares(friends.data);
     } catch {
         /* 네트워크 오류: 다음 기회에 */
     }
+}
+
+/** 번개 '모이는 중' 위치 공유 켜기·끄기 → 응답은 지도 데이터(board) */
+export async function startMeetupShare(meetupId) {
+    const board = (await put(`/meetups/${meetupId}/location-share`)).data;
+    await refreshShares(); // 위치 감시 시작
+    return board;
+}
+
+export async function stopMeetupShare(meetupId) {
+    const board = (await del(`/meetups/${meetupId}/location-share`)).data;
+    await refreshShares(); // 다른 공유가 없으면 위치 감시 멈춤
+    return board;
 }
 
 export async function shareWith(userId, duration) {
@@ -59,14 +79,18 @@ export async function stopAllSharing() {
 function setShares(list) {
     locShare.shares = list;
     scheduleExpiryCheck();
-    if (list.length && navigator.geolocation) startWatch();
+    if ((list.length || locShare.meetups.length) && navigator.geolocation) startWatch();
     else stopWatch();
 }
 
 /** 가장 먼저 끝나는 공유 시각에 목록을 다시 받아 '공유 중' 표시를 정리 */
 function scheduleExpiryCheck() {
     clearTimeout(expiryTimer);
-    const ends = locShare.shares.filter((s) => s.until).map((s) => new Date(s.until).getTime());
+    // 친구 공유 끝나는 시각 + 번개 채팅방 닫히는 시각 중 가장 이른 때
+    const ends = [
+        ...locShare.shares.filter((s) => s.until).map((s) => new Date(s.until).getTime()),
+        ...locShare.meetups.map((m) => new Date(m.closes_at).getTime()),
+    ];
     if (!ends.length) return;
     const ms = Math.min(Math.max(Math.min(...ends) - Date.now() + 1000, 1000), 2 ** 31 - 1);
     expiryTimer = setTimeout(refreshShares, ms);
@@ -118,7 +142,7 @@ async function send(p) {
     lastSent = { ...p, t: Date.now() };
     try {
         const res = await post('/location', p);
-        // 서버 기준으로 보여줄 친구가 없으면(만료·차단) 목록을 다시 받아 감시를 멈춘다
+        // 서버 기준으로 보여줄 사람이 없으면(만료·차단·채팅방 닫힘) 목록을 다시 받아 감시를 멈춘다
         if (!res.sharing) refreshShares();
     } catch {
         /* 일시 오류·요청 제한은 다음 주기에 다시 */

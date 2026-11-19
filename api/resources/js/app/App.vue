@@ -4,7 +4,7 @@
  * 로그인 상태가 되면 알림(종 숫자·실시간)과 내 위치 공유를 시작하고, 푸시 알림을 누르면 해당 화면으로 이동
  * 위치를 공유 중이면 모든 화면에 '위치 공유 중' 표시 (모르는 사이 공유되는 일이 없게, 누르면 친구 지도)
  */
-import { onBeforeUnmount, onMounted, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { auth } from './lib/auth';
 import { locShare, startLocationShare, stopLocationShare } from './lib/locationShare';
@@ -14,6 +14,19 @@ import { toast } from './lib/toast';
 
 const router = useRouter();
 const route = useRoute();
+
+// '공유 중' 띠: 친구 공유 + 번개 '모이는 중' 공유. 그 지도 화면 안에서는 숨김
+const sharingText = computed(() => {
+    const parts = [];
+    if (locShare.shares.length) parts.push(`친구 ${locShare.shares.length}명`);
+    if (locShare.meetups.length) parts.push(`번개 ${locShare.meetups.length}개`);
+    return parts.join(' · ');
+});
+const showLocBar = computed(() => !!sharingText.value && !['map', 'meetup-map'].includes(route.name));
+function openSharing() {
+    if (locShare.shares.length) router.push({ name: 'map' });
+    else router.push({ name: 'meetup-map', params: { id: locShare.meetups[0].meetup_id } });
+}
 
 watch(() => auth.me?.id, (id) => {
     if (id) {
@@ -39,8 +52,8 @@ onBeforeUnmount(() => navigator.serviceWorker?.removeEventListener('message', on
 <template>
     <div class="phone">
         <!-- 위치 공유 중 띠: 화면 맨 위에 '자리를 차지하며' 붙음 → 채팅·버튼을 가리지 않음 -->
-        <button v-if="locShare.shares.length && route.name !== 'map'" class="loc-bar" @click="router.push({ name: 'map' })">
-            <span>📍 내 위치 공유 중 · {{ locShare.shares.length }}명</span>
+        <button v-if="showLocBar" class="loc-bar" @click="openSharing">
+            <span>📍 내 위치 공유 중 · {{ sharingText }}</span>
             <span class="loc-go">보기 ›</span>
         </button>
         <div class="view"><RouterView /></div>

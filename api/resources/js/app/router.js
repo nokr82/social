@@ -28,6 +28,8 @@ const router = createRouter({
         { path: '/meetups', name: 'meetups', component: () => import('./pages/MeetupTabPage.vue') },
         { path: '/meetups/:id(\\d+)', name: 'meetup', component: () => import('./pages/MeetupDetailPage.vue'), props: true },
         { path: '/meetups/:id(\\d+)/room', name: 'meetup-room', component: () => import('./pages/MeetupRoomPage.vue'), props: true },
+        // 번개 '모이는 중' 지도 (목적지 + 위치 공유를 켠 참여자)
+        { path: '/meetups/:id(\\d+)/map', name: 'meetup-map', component: () => import('./pages/MeetupMapPage.vue'), props: true },
         { path: '/plazas/:plazaId(\\d+)/meetups/new', name: 'meetup-create', component: () => import('./pages/MeetupCreatePage.vue'), props: true },
         { path: '/:pathMatch(.*)*', redirect: '/' },
     ],

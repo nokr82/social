@@ -153,6 +153,8 @@ class MeetupService
         MeetupMember::where('meetup_id', $meetup->id)->where('user_id', $user->id)
             ->update(['status' => $status, 'canceled_at' => now(), 'arrived_at' => null]);
         ChatRoomMember::where('room_id', $meetup->chatRoom()->value('id'))->where('user_id', $user->id)->delete();
+        // 참여를 취소하면 '모이는 중' 위치 공유도 끝 (남은 참여자에게 계속 보이면 안 됨)
+        app(MeetupLocationService::class)->stopFor($meetup, $user->id);
 
         $this->system($meetup, $user, "{$user->nickname}님이 참여를 취소했어요");
 
@@ -169,6 +171,7 @@ class MeetupService
             throw new DomainException('MEETUP_CLOSED', '이미 시작했거나 취소된 번개예요', 410);
         }
         $meetup->update(['status' => Meetup::CANCELED, 'canceled_at' => now()]);
+        app(MeetupLocationService::class)->stopAll($meetup); // 취소된 번개에서는 위치 공유도 모두 끝
         $this->system($meetup, $host, '호스트가 번개를 취소했어요');
         Notify::meetupCanceled($meetup, $this->joinedUsers($meetup, except: $host->id));
     }
