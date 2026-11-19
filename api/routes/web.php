@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/s/p/{code}', [SharePreviewController::class, 'plaza'])->where('code', '[a-z0-9]{8}');
     Route::get('/s/m/{code}', [SharePreviewController::class, 'meetup'])->where('code', '[a-z0-9]{8}');
+    // 카톡 카드 이미지 (1200×630, 주소 끝 ?v=내용 해시)
+    Route::get('/s/p/{code}/og.png', [SharePreviewController::class, 'plazaImage'])->where('code', '[a-z0-9]{8}');
+    Route::get('/s/m/{code}/og.png', [SharePreviewController::class, 'meetupImage'])->where('code', '[a-z0-9]{8}');
 });
 
 // 소셜링 앱(Vue SPA): API·웹소켓·헬스체크·관리자(Filament)를 뺀 모든 경로를 앱에 넘긴다 (화면 라우팅은 vue-router)

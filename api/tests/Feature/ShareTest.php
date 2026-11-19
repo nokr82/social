@@ -113,4 +113,50 @@ class ShareTest extends TestCase
         $town = $this->actingAs($this->host)->getJson('/api/free-plaza')->json('data.id');
         $this->actingAs($this->host)->postJson("/api/plazas/{$town}/share")->assertStatus(409)->assertJsonPath('code', 'NOT_SHAREABLE');
     }
+
+    /** og:image 주소에서 경로·v 뽑기 */
+    private function ogImageOf(string $html): string
+    {
+        preg_match('/<meta property="og:image" content="([^"]+)"/', $html, $m);
+        $this->assertNotEmpty($m, 'og:image 태그가 있어야 함');
+
+        return parse_url(html_entity_decode($m[1]), PHP_URL_PATH).'?'.parse_url(html_entity_decode($m[1]), PHP_URL_QUERY);
+    }
+
+    /** 카톡 카드 이미지: 1200×630 PNG · 인원이 바뀌면 주소(v)도 바뀜 · 끝난 번개도 이미지 있음 */
+    public function test_card_image_is_large_png_and_versioned(): void
+    {
+        $id = $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/meetups", [
+            'title' => '퇴근하고 한잔해요', 'area_label' => '역삼역 근처', 'place_detail' => '3번 출구',
+            'starts_at' => now()->addHours(3)->toIso8601String(), 'capacity' => 4, 'age_rule' => 'any',
+        ])->assertCreated()->json('data.id');
+        $code = $this->codeOf($this->actingAs($this->host)->postJson("/api/meetups/{$id}/share")->json('data.url'));
+        $this->app['auth']->forgetGuards();
+
+        $page = $this->get("/s/m/{$code}")->assertOk()
+            ->assertSee('<meta property="og:image:width" content="1200">', false)
+            ->assertSee('summary_large_image', false);
+        $img = $this->ogImageOf($page->getContent());
+        $this->assertStringStartsWith("/s/m/{$code}/og.png?v=", $img);
+
+        $res = $this->get($img)->assertOk()->assertHeader('Content-Type', 'image/png');
+        $this->assertStringContainsString('immutable', $res->headers->get('Cache-Control'));
+        [$w, $h] = getimagesize($res->baseResponse->getFile()->getPathname());
+        $this->assertSame([1200, 630], [$w, $h]);
+
+        // 옛 주소(v 다름)로 와도 지금 그림을 주되 짧게 캐시
+        $this->assertStringNotContainsString('immutable', $this->get("/s/m/{$code}/og.png?v=old")->headers->get('Cache-Control'));
+
+        // 인원이 바뀌면 이미지 주소도 바뀜 (카톡이 옛 그림을 계속 보여주지 않게)
+        $this->actingAs(User::factory()->complete()->create())->postJson("/api/meetups/{$id}/join")->assertOk();
+        $this->app['auth']->forgetGuards();
+        $img2 = $this->ogImageOf($this->get("/s/m/{$code}")->getContent());
+        $this->assertNotSame($img, $img2);
+
+        // 끝난 번개도 이미지(끝났어요)
+        $this->travel(4)->hours();
+        $this->get($this->ogImageOf($this->get("/s/m/{$code}")->getContent()))->assertOk();
+
+        $this->get('/s/m/zzzzzzzz/og.png')->assertNotFound();
+    }
 }

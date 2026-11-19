@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Meetup;
 use App\Models\Plaza;
 use App\Services\Share\ShareService;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * 공유 링크 미리보기 (로그인 없이 보는 공개 페이지).
@@ -22,7 +24,15 @@ class SharePreviewController extends Controller
     {
         $plaza = Plaza::where('share_code', $code)->firstOrFail();
 
-        return $this->render($this->share->plazaPreview($plaza));
+        return $this->render($this->share->plazaPreview($plaza), "/s/p/{$code}/og.png");
+    }
+
+    /** GET /s/p/{code}/og.png — 카톡 카드 이미지 */
+    public function plazaImage(Request $request, string $code): BinaryFileResponse
+    {
+        $plaza = Plaza::where('share_code', $code)->firstOrFail();
+
+        return $this->image($request, $this->share->plazaPreview($plaza));
     }
 
     /** GET /s/m/{code} */
@@ -30,13 +40,38 @@ class SharePreviewController extends Controller
     {
         $meetup = Meetup::where('share_code', $code)->firstOrFail();
 
-        return $this->render($this->share->meetupPreview($meetup));
+        return $this->render($this->share->meetupPreview($meetup), "/s/m/{$code}/og.png");
     }
 
-    private function render(array $p): Response
+    /** GET /s/m/{code}/og.png — 카톡 카드 이미지 */
+    public function meetupImage(Request $request, string $code): BinaryFileResponse
     {
-        return response()->view('share', ['p' => $p])
+        $meetup = Meetup::where('share_code', $code)->firstOrFail();
+
+        return $this->image($request, $this->share->meetupPreview($meetup));
+    }
+
+    private function render(array $p, string $imagePath): Response
+    {
+        [$hash] = $this->share->cardImage($p);
+
+        return response()->view('share', ['p' => $p, 'ogImage' => url($imagePath).'?v='.$hash])
             // 인원이 바뀌므로 길게 캐시하지 않음 (카카오 쪽 미리보기 캐시는 별개로 남을 수 있음)
             ->header('Cache-Control', 'public, max-age=60');
+    }
+
+    /**
+     * 이미지 응답. 주소의 v가 지금 내용과 같으면 오래 캐시(내용이 바뀌면 주소가 바뀌므로 안전),
+     * 다르거나 없으면(옛 주소) 지금 그림을 짧게 캐시해서 내보냄
+     */
+    private function image(Request $request, array $p): BinaryFileResponse
+    {
+        [$hash, $path] = $this->share->cardImage($p);
+        $fresh = $request->query('v') === $hash;
+
+        return response()->file($path, [
+            'Content-Type' => 'image/png',
+            'Cache-Control' => $fresh ? 'public, max-age=604800, immutable' : 'public, max-age=300',
+        ]);
     }
 }

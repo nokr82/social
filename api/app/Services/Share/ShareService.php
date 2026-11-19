@@ -27,6 +27,9 @@ class ShareService
     private const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
     private const LENGTH = 8;
 
+    private const CARD_VERSION = 1;          // 카드 디자인을 바꾸면 올림 → 모든 이미지 주소가 바뀌어 카톡도 새로 받음
+    private const CARD_DIR = 'app/share-og'; // storage 아래 (공개 폴더 아님 — 컨트롤러가 내보냄)
+
     public function __construct(
         private readonly PlazaPresence $presence,
         private readonly RegionResolver $regions,
@@ -92,6 +95,9 @@ class ShareService
                 $open ? "참여 {$members}명 · 지금 {$live}명 접속" : null,
             ])),
             'description' => $open ? $plaza->description : null,
+            // 카톡 카드 이미지·페이지 칩: 자주 바뀌는 '지금 접속 수'는 빼서 이미지가 계속 새로 만들어지지 않게
+            'chips' => $open ? array_values(array_filter([$category, $region, "참여 {$members}명"])) : [],
+            'progress' => null,
             'og_description' => $open
                 ? implode(' · ', array_filter([$category, $region, "참여 {$members}명"]))
                     .($plaza->description ? ' — '.mb_strimwidth($plaza->description, 0, 60, '…') : '')
@@ -115,6 +121,8 @@ class ShareService
             'badge' => $open ? "{$joined}/{$meetup->capacity}명" : null,
             'lines' => $open ? array_values(array_filter([$when, $meetup->area_label, $meetup->conditionLabel()])) : [],
             'description' => $open ? $meetup->description : null,
+            'chips' => $open ? array_values(array_filter([$when, $meetup->area_label, "{$joined}/{$meetup->capacity}명"])) : [],
+            'progress' => $open ? ['joined' => $joined, 'capacity' => $meetup->capacity] : null, // 페이지의 인원 막대
             'og_description' => $open
                 ? implode(' · ', [$when, $meetup->area_label, "{$joined}/{$meetup->capacity}명"])
                 : '끝났거나 취소된 번개예요',
@@ -177,5 +185,52 @@ class ShareService
         $days = ['일', '월', '화', '수', '목', '금', '토'];
 
         return $t->format('n월 j일').' ('.$days[$t->dayOfWeek].') '.$t->format('H:i');
+    }
+
+    /**
+     * 카톡 카드 이미지 (1200×630 PNG). 미리보기에서 그림에 들어가는 항목만 뽑아 해시 → 파일 이름.
+     * - 내용이 같으면 같은 파일을 다시 씀(링크를 열 때마다 그리지 않음)
+     * - 내용이 바뀌면(인원 3→4명, 끝남) 해시가 바뀌어 og:image 주소도 바뀜 → 카톡이 예전 그림을 계속 보여주지 않음
+     *
+     * @return array{0: string, 1: string} [해시, 파일 경로]
+     */
+    public function cardImage(array $preview): array
+    {
+        $card = [
+            'kind' => $preview['kind'],
+            'title' => $preview['title'],
+            'chips' => $preview['chips'],
+            'ended' => $preview['ended'],
+        ];
+        $hash = substr(sha1(json_encode($card + ['v' => self::CARD_VERSION], JSON_UNESCAPED_UNICODE)), 0, 16);
+        $dir = storage_path(self::CARD_DIR);
+        $path = "{$dir}/{$hash}.png";
+
+        if (! is_file($path)) {
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $png = (new ShareImage(resource_path('fonts'), public_path('icons/app-icon-192.png')))->render($card);
+            // 임시 파일에 쓰고 이름 바꾸기: 동시에 두 요청이 같은 그림을 만들어도 반쯤 쓴 파일을 내보내지 않게
+            $tmp = "{$path}.".bin2hex(random_bytes(4));
+            file_put_contents($tmp, $png);
+            rename($tmp, $path);
+            $this->pruneCards($dir);
+        }
+
+        return [$hash, $path];
+    }
+
+    /** 오래된 카드 이미지 정리: 새로 만들 때 가끔(1%) 7일 지난 파일 삭제 (인원이 바뀔 때마다 파일이 생기므로) */
+    private function pruneCards(string $dir): void
+    {
+        if (random_int(1, 100) !== 1) {
+            return;
+        }
+        foreach (glob("{$dir}/*.png") ?: [] as $file) {
+            if (filemtime($file) < now()->subDays(7)->getTimestamp()) {
+                @unlink($file);
+            }
+        }
     }
 }
