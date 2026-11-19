@@ -271,10 +271,11 @@ class PlazaTest extends TestCase
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/messages", ['body' => '한판 ㄱ?'])->assertCreated();
 
         $outsider = User::factory()->complete()->create();
-        $this->actingAs($outsider)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
+        $res = $this->actingAs($outsider)->getJson('/api/plazas?lat='.self::LAT.'&lng='.self::LNG)
             ->assertJsonPath('data.0.chatting', true)
-            ->assertJsonMissingPath('data.0.last_message')
-            ->assertDontSee('한판');
+            ->assertJsonMissingPath('data.0.last_message');
+        // assertDontSee는 JSON에선 헛돎(한글이 \uXXXX로 나가서 원문 검색에 안 걸림) → 풀어서 검사
+        $this->assertStringNotContainsString('한판', json_encode($res->json(), JSON_UNESCAPED_UNICODE));
 
         $this->travel(11)->minutes(); // 10분 지나면 '대화 중' 표시도 끔
         $this->actingAs($host)->postJson("/api/plazas/{$plaza->id}/enter", ['lat' => self::LAT, 'lng' => self::LNG])->assertOk(); // 방장 부재로 숨겨지지 않게

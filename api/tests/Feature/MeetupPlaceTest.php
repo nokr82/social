@@ -108,11 +108,13 @@ class MeetupPlaceTest extends TestCase
             ->json('data.id');
 
         $guest = User::factory()->complete()->create();
-        $this->actingAs($guest)->getJson("/api/meetups/{$id}")
+        $res = $this->actingAs($guest)->getJson("/api/meetups/{$id}")
             ->assertJsonPath('data.place', null)
-            ->assertJsonPath('data.area_label', '역삼동 근처')
-            ->assertDontSee('스타벅스')
-            ->assertDontSee('테헤란로');
+            ->assertJsonPath('data.area_label', '역삼동 근처');
+        // assertDontSee는 JSON에선 헛돎(한글이 \uXXXX로 나가서 원문 검색에 안 걸림) → 풀어서 검사
+        $body = json_encode($res->json(), JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('스타벅스', $body);
+        $this->assertStringNotContainsString('테헤란로', $body);
 
         $this->actingAs($guest)->postJson("/api/meetups/{$id}/join")->assertJsonPath('data.place.address', '서울 강남구 테헤란로 101');
     }
