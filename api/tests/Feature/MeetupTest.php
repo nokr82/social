@@ -35,11 +35,15 @@ class MeetupTest extends TestCase
         ])->assertCreated()->json('data.id');
     }
 
-    public function test_only_within_48_hours(): void
+    /** 날짜 제한 없음(2026-11-19): 먼 날짜도 열리고, 10분 안쪽만 막힘 */
+    public function test_any_future_date_but_not_within_10_minutes(): void
     {
+        $id = $this->makeMeetup(['starts_at' => now()->addDays(30)->toIso8601String()]);
+        $this->assertTrue(\App\Models\Meetup::find($id)->starts_at->gt(now()->addDays(29)));
+
         $this->actingAs($this->host)->postJson("/api/plazas/{$this->plaza->id}/meetups", [
-            'title' => '먼 약속', 'area_label' => '역삼', 'place_detail' => 'x', 'capacity' => 4,
-            'starts_at' => now()->addHours(49)->toIso8601String(),
+            'title' => '너무 급한 약속', 'area_label' => '역삼', 'place_detail' => 'x', 'capacity' => 4,
+            'starts_at' => now()->addMinutes(5)->toIso8601String(),
         ])->assertUnprocessable()->assertJson(['code' => 'INVALID_TIME']);
     }
 

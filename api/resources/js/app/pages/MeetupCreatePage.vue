@@ -1,7 +1,7 @@
 <script setup>
 /**
  * 번개 만들기 (디자인: BungaeCreate.dc.html)
- * - 광장에 연결되어 올라감 · 48시간 이내 약속만
+ * - 광장에 연결되어 올라감 · 날짜 제한 없음(오늘·내일 칩 + 날짜 고르기)
  * - 장소: '만날 장소 고르기' 큰 카드 → 전체 화면 PlacePicker(지도 가운데 핀 + 검색, 카카오T 방식)
  *   → 대략 위치 자동 채움. 지도를 못 불러올 때만 '글로만 적기'. 고른 장소·메모는 참여 확정자만, 대략 위치는 모두에게
  * - 고를 수 있는 범위는 서버가 정함(주민 광장 5km·동네 광장 같은 구·자유광장 제한 없음), 생성 때 다시 확인
@@ -12,6 +12,7 @@ import { useRoute, useRouter } from 'vue-router';
 import PlaceMap from '../components/PlaceMap.vue';
 import PlacePicker from '../components/PlacePicker.vue';
 import { ApiError, get, post } from '../lib/api';
+import { meetupWhen } from '../lib/time';
 
 const props = defineProps({ plazaId: { type: String, required: true } });
 const router = useRouter();
@@ -19,7 +20,7 @@ const route = useRoute();
 
 const plazaName = ref('');
 const form = reactive({
-    title: '', day: 'today', time: defaultTime(), area: '', place: '',
+    title: '', day: 'today', date: '', time: defaultTime(), area: '', place: '',
     capacity: 6, age: 'any', description: '',
 });
 const busy = ref(false);
@@ -79,20 +80,37 @@ function defaultTime() {
     return `${String(d.getHours()).padStart(2, '0')}:00`;
 }
 
-/** 오늘/내일 + 시각 → Date (기기 시간대 기준) */
+/** 기기 시간대 기준 'YYYY-MM-DD' (date 입력의 min·기본값용 — toISOString은 UTC라 밤에 날짜가 하루 밀림) */
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayYmd = ymd(new Date());
+const dateInput = ref(null);
+
+/** 오늘/내일 칩을 누르면 날짜 고르기는 해제, '날짜 선택'을 누르면 달력을 바로 엶 */
+function pickDay(id) {
+    form.day = id;
+    if (id !== 'date') return;
+    if (!form.date) { const t = new Date(); t.setDate(t.getDate() + 2); form.date = ymd(t); } // 모레부터 보여 줌
+    dateInput.value?.showPicker?.(); // 지원 안 하는 브라우저는 아래 입력칸을 직접 누름
+}
+
+/** 오늘/내일/고른 날짜 + 시각 → Date (기기 시간대 기준) */
 const startsAt = computed(() => {
     const [h, m] = form.time.split(':').map(Number);
-    const d = new Date();
+    let d = new Date();
     if (form.day === 'tomorrow') d.setDate(d.getDate() + 1);
+    if (form.day === 'date' && form.date) {
+        const [y, mo, da] = form.date.split('-').map(Number);
+        d = new Date(y, mo - 1, da); // new Date('YYYY-MM-DD')는 UTC로 해석되므로 숫자로 만듦
+    }
     d.setHours(h, m, 0, 0);
     return d;
 });
 const timeError = computed(() => {
-    const diff = startsAt.value.getTime() - Date.now();
-    if (diff < 10 * 60e3) return '지금부터 10분 이후 시간을 골라주세요';
-    if (diff > 48 * 3600e3) return '48시간 이내 약속만 열 수 있어요';
+    if (form.day === 'date' && !form.date) return '날짜를 골라주세요';
+    if (startsAt.value.getTime() - Date.now() < 10 * 60e3) return '지금부터 10분 이후 시간을 골라주세요';
     return '';
 });
+const whenHint = computed(() => (form.day === 'date' && form.date ? `${meetupWhen(startsAt.value.toISOString())}에 만나요` : '날짜 제한 없이 열 수 있어요'));
 // 장소: 고른 장소가 있거나, 직접 입력이면 정확한 장소 글자가 있어야 함 (서버도 같은 규칙)
 const placeOk = computed(() => (manual.value ? !!form.place.trim() : !!picked.value));
 const valid = computed(() => form.title.trim().length >= 2 && form.area.trim() && placeOk.value && !timeError.value);
@@ -153,15 +171,19 @@ onMounted(async () => {
 
             <div class="field">
                 <span class="label">언제</span>
-                <div class="row">
-                    <button v-for="d in [{ id: 'today', label: '오늘' }, { id: 'tomorrow', label: '내일' }]" :key="d.id" class="chip" :class="{ on: form.day === d.id }" :aria-pressed="form.day === d.id" @click="form.day = d.id">{{ d.label }}</button>
+                <div class="row when">
+                    <button v-for="d in [{ id: 'today', label: '오늘' }, { id: 'tomorrow', label: '내일' }, { id: 'date', label: '📅 날짜 선택' }]" :key="d.id" class="chip" :class="{ on: form.day === d.id }" :aria-pressed="form.day === d.id" @click="pickDay(d.id)">{{ d.label }}</button>
+                    <label v-if="form.day === 'date'" class="time date">
+                        <span class="sr-only">날짜</span>
+                        <input ref="dateInput" v-model="form.date" type="date" :min="todayYmd">
+                    </label>
                     <label class="time">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                         <span class="sr-only">시간</span>
                         <input v-model="form.time" type="time" step="600">
                     </label>
                 </div>
-                <span class="hint" :class="{ err: timeError }">{{ timeError || '번개는 48시간 이내 약속만 열 수 있어요' }}</span>
+                <span class="hint" :class="{ err: timeError }">{{ timeError || whenHint }}</span>
             </div>
 
             <div class="field">
@@ -261,6 +283,10 @@ textarea { border: 1.5px solid var(--c-line); border-radius: 14px; padding: 12px
 .chip.sm { height: 40px; padding: 0 14px; font-size: 13px; }
 .chip.on { border-color: var(--c-primary); background: var(--c-primary); color: #fff; font-weight: 700; }
 .time { flex: 1; height: 42px; border: 1.5px solid var(--c-line); border-radius: 21px; background: var(--c-surface); display: flex; align-items: center; padding: 0 14px; gap: 6px; }
+/* 칩 3개 + 시각이 좁은 화면에서 넘치면 줄바꿈, 고른 날짜는 한 줄 전체 */
+.row.when { flex-wrap: wrap; }
+.row.when .time { min-width: 120px; }
+.time.date { flex-basis: 100%; order: 3; }
 .time input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 14px; color: var(--c-ink); }
 .hint { font-size: 12px; color: var(--c-muted); }
 .hint.err { color: var(--c-danger); }

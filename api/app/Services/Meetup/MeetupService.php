@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * 번개 규칙 (디자인 메모 + 확정된 결정)
- * - 48시간 이내, 2~10명, 광장에 연결
+ * - 10분 뒤부터 날짜 제한 없음(2026-11-19, 전엔 48시간 이내), 2~10명, 광장에 연결
  * - 참여 = 즉시 확정 → 정확한 장소 공개
  * - 나이 조건은 서버가 본인인증 나이로 확인만 (나이는 누구에게도 공개 안 함)
  * - 취소: 시작 1시간 전까지 자유, 이후는 '늦은 취소'로 기록
@@ -51,8 +51,9 @@ class MeetupService
         if (($host->trustScore?->score ?? 0) < config('social.trust.min_score_to_host')) {
             throw new DomainException('LOW_TRUST', '매너점수가 낮아 지금은 번개를 열 수 없어요', 403);
         }
-        if ($startsAt->lte(now()->addMinutes(10)) || $startsAt->gt(now()->addHours(Meetup::MAX_AHEAD_HOURS))) {
-            throw new DomainException('INVALID_TIME', '번개는 지금부터 48시간 이내 약속만 열 수 있어요');
+        // 언제든 열 수 있음 (사용자 요청으로 48시간 제한 없앰). 너무 가까운 시각만 막음 — 참여자가 올 시간이 없어서
+        if ($startsAt->lte(now()->addMinutes(10))) {
+            throw new DomainException('INVALID_TIME', '지금부터 10분 이후 시간을 골라주세요');
         }
         $openCount = Meetup::upcoming()->where('host_id', $host->id)->count();
         if ($openCount >= config('social.meetup.max_open_per_host')) {

@@ -14,7 +14,6 @@ class Meetup extends Model
     public const CANCELED = 'canceled';
 
     public const ROOM_HOURS = 24;     // 채팅방은 약속 24시간 뒤 닫힘
-    public const MAX_AHEAD_HOURS = 48; // 48시간 이내 약속만
     public const FREE_CANCEL_HOURS = 1; // 1시간 전까지 자유 취소
 
     protected $attributes = ['status' => self::OPEN, 'age_rule' => 'any'];

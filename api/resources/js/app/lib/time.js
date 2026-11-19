@@ -19,14 +19,15 @@ export function presenceText(f) {
 /** 성별·나이 배지 (디자인: '남 · 31') */
 export const genderAge = (u) => (u?.gender ? `${u.gender === 'F' ? '여' : '남'} · ${u.age}` : '');
 
-/** 번개 시간: '오늘 저녁 8:00' / '내일 오후 2:30' */
+/** 번개 시간: '오늘 저녁 8:00' / '내일 오후 2:30' / '11/25(화) 오후 2:30'
+ *  날짜 부분에 띄어쓰기를 넣지 않음 — 화면들이 split(' ')[0]으로 날짜만 잘라 씀 */
 export function meetupWhen(iso) {
     const d = new Date(iso);
     const today = new Date();
     const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
     const day = d.toDateString() === today.toDateString() ? '오늘'
         : d.toDateString() === tomorrow.toDateString() ? '내일'
-        : `${d.getMonth() + 1}/${d.getDate()}`;
+        : `${d.getFullYear() !== today.getFullYear() ? `${d.getFullYear()}.` : ''}${d.getMonth() + 1}/${d.getDate()}(${'일월화수목금토'[d.getDay()]})`;
     const h = d.getHours();
     const part = h < 6 ? '새벽' : h < 12 ? '오전' : h < 18 ? '오후' : '저녁';
     const h12 = h % 12 === 0 ? 12 : h % 12;
@@ -39,11 +40,11 @@ export function until(iso) {
     if (m <= 0) return '진행 중';
     if (m < 60) return `${m}분 후`;
     const h = Math.floor(m / 60);
+    if (h >= 48) return `${Math.floor(h / 24)}일 후`; // 날짜 제한이 없어져 '300시간 후' 같은 표시 방지
     return m % 60 ? `${h}시간 ${m % 60}분 후` : `${h}시간 후`;
 }
 
-/** 오늘/내일 칩 표시용 */
+/** 오늘/내일/날짜 표시용 (meetupWhen의 날짜 부분) */
 export function dayLabel(iso) {
-    const d = new Date(iso);
-    return d.toDateString() === new Date().toDateString() ? '오늘' : '내일';
+    return meetupWhen(iso).split(' ')[0];
 }
