@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\MeetupController;
+use App\Http\Controllers\Api\MeetupInviteController;
 use App\Http\Controllers\Api\MeetupLocationController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\NotificationController;
@@ -136,6 +137,9 @@ Route::middleware(['auth:sanctum', 'seen'])->group(function () {
         Route::put('meetups/{meetup}/location-share', [MeetupLocationController::class, 'start']);
         Route::delete('meetups/{meetup}/location-share', [MeetupLocationController::class, 'stop']);
         Route::get('me/meetup-location-shares', [MeetupLocationController::class, 'mine']);
+        // 번개 친구 초대 (보내기는 분당 10회 — 친구 목록을 돌며 도배하는 것 방지)
+        Route::get('meetups/{meetup}/invites', [MeetupInviteController::class, 'index']);
+        Route::post('meetups/{meetup}/invites', [MeetupInviteController::class, 'store'])->middleware('throttle:10,1');
         Route::get('meetups/{meetup}/messages', [MeetupController::class, 'messages']);
         Route::post('meetups/{meetup}/messages', [MeetupController::class, 'send'])->middleware('throttle:chat');
         Route::post('meetups/{meetup}/read', [MeetupController::class, 'read']);

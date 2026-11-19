@@ -9,6 +9,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AvatarFace from '../components/AvatarFace.vue';
+import InviteFriendsSheet from '../components/InviteFriendsSheet.vue';
 import { ApiError, del, get, post } from '../lib/api';
 import PlaceMap from '../components/PlaceMap.vue';
 import { kakaoMapLinks, openKakaoMap } from '../lib/kakaoMapLink';
@@ -24,6 +25,7 @@ const busy = ref(false);
 const confirmCancel = ref(false);
 
 const joined = computed(() => ['joined', 'host'].includes(m.value?.my_status));
+const showInvite = ref(false); // 친구 초대 시트 (참여 확정자 + 시작 전)
 const full = computed(() => m.value && m.value.joined_count >= m.value.capacity);
 // 6칸 슬롯 (디자인) — 정원만큼 (최대 10), 빈자리는 점선
 const slots = computed(() => Array.from({ length: m.value?.capacity ?? 0 }, (_, i) => m.value.members[i] ?? null));
@@ -160,6 +162,11 @@ onMounted(load);
             </div>
         </div>
 
+        <!-- 친구 초대: 참여 확정자 + 시작 전 (하단 버튼 줄과 따로 — 버튼 3개를 한 줄에 넣으면 좁아서) -->
+        <div v-if="m && joined && m.is_upcoming && m.status !== 'canceled'" class="invite-bar">
+            <button class="invite" @click="showInvite = true">👥 친구 초대하기</button>
+        </div>
+
         <!-- 하단 버튼 -->
         <div v-if="m" class="bottom">
             <template v-if="m.status === 'canceled'">
@@ -186,6 +193,7 @@ onMounted(load);
                 </div>
             </div>
         </div>
+        <InviteFriendsSheet v-if="showInvite" :meetup-id="m.id" @close="showInvite = false" />
     </div>
 </template>
 
@@ -194,6 +202,8 @@ onMounted(load);
 .head { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 4px 8px; }
 .head-title { font-size: 16px; font-weight: 700; }
 .head-actions { display: flex; align-items: center; }
+.invite-bar { padding: 0 20px 8px; }
+.invite { width: 100%; height: 48px; border: 1.5px solid var(--c-primary); border-radius: 14px; background: var(--c-surface); color: var(--c-primary-deep); font-size: 15px; font-weight: 700; }
 .memo { color: var(--c-ink-2) !important; }
 .place-map { margin-top: 6px; }
 .map-link { align-self: flex-start; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--c-primary-deep); }

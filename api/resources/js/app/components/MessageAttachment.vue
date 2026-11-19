@@ -62,7 +62,7 @@ const mtState = computed(() => {
             <span class="bz" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></svg>
             </span>
-            번개 초대
+            {{ message.invite ? (mine ? '번개에 초대했어요' : `${message.sender?.nickname ?? '친구'}님이 번개에 초대했어요`) : '번개 초대' }}
         </span>
         <b>{{ mt?.title ?? message.body }}</b>
         <template v-if="mt">
@@ -70,7 +70,7 @@ const mtState = computed(() => {
             <small>{{ mt.joined_count }}/{{ mt.capacity }}명 참여 · {{ mt.plaza_name }}</small>
         </template>
         <span v-if="mtState" class="state">{{ mtState }}</span>
-        <span v-else class="go">자세히 보기</span>
+        <span v-else class="go">{{ message.invite && !mine ? '눌러서 참여하기' : '자세히 보기' }}</span>
     </button>
 </template>
 

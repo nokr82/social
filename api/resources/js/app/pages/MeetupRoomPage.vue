@@ -11,6 +11,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AttachSheet from '../components/AttachSheet.vue';
 import AvatarFace from '../components/AvatarFace.vue';
+import InviteFriendsSheet from '../components/InviteFriendsSheet.vue';
 import MessageAttachment from '../components/MessageAttachment.vue';
 import { ApiError, get, post } from '../lib/api';
 import { auth } from '../lib/auth';
@@ -28,6 +29,9 @@ const messages = ref([]);
 const draft = ref('');
 const sending = ref(false);
 const showNoshow = ref(false);
+const showInvite = ref(false);
+// 친구 초대는 시작 전 번개만 (서버도 같은 기준)
+const beforeStart = computed(() => !!room.value && new Date(room.value.starts_at).getTime() > Date.now());
 const listEl = ref(null);
 const channel = `meetup.${props.id}`;
 
@@ -194,6 +198,12 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E7A4C" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
                     도착 완료 · 다른 사람에게 알렸어요
                 </button>
+                <!-- 목적지 + 위치 공유를 켠 참여자 지도 -->
+                <button class="gather" @click="router.push({ name: 'meetup-map', params: { id } })">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B4BD6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
+                    모이는 중 지도 · 서로 어디쯤인지 보기
+                </button>
+                <button v-if="beforeStart" class="gather" @click="showInvite = true">👥 친구 초대하기</button>
                 <button v-if="room.can_vote_noshow" class="noshow-link" @click="showNoshow = true">안 온 사람이 있나요?</button>
             </template>
         </div>
@@ -260,6 +270,7 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
                 <button class="close" @click="showNoshow = false">닫기</button>
             </div>
         </div>
+        <InviteFriendsSheet v-if="showInvite" :meetup-id="id" @close="showInvite = false" />
     </div>
 </template>
 
@@ -280,6 +291,7 @@ onBeforeUnmount(() => window.Echo?.leave(channel));
 .col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .col b { font-size: 14px; }
 .col small { font-size: 12px; color: var(--c-primary-ink); font-weight: 700; }
+.gather { margin-top: 8px; width: 100%; height: 44px; border: 1.5px solid var(--c-primary); border-radius: 12px; background: var(--c-surface); color: var(--c-primary-deep); font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .map { width: 44px; height: 44px; border-radius: 14px; background: var(--c-primary-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .arrive { height: 44px; border: none; border-radius: 12px; background: var(--c-primary); color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .arrive.done { background: #E6F8EF; color: var(--c-ok); }

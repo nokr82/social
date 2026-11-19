@@ -29,6 +29,8 @@ class ChatMessageResource extends JsonResource
             ]),
             // 번개 카드: 최신 상태 (지워졌으면 null → '사라진 번개')
             'meetup' => $this->when($this->type === ChatMessage::MEETUP, fn () => $attachments->meetupSummary($this->resource)),
+            // 번개 초대 카드인지 (같은 번개 카드지만 '○○님이 초대했어요'로 보여줌)
+            'invite' => $this->when($this->type === ChatMessage::MEETUP, fn () => (bool) ($this->meta['invite'] ?? false)),
             // 위치 카드: 보낸 사람 → 대화 상대 공유가 지금도 유효한지 (좌표는 GET /api/location/friends로 따로 받음)
             'location' => $this->when($this->type === ChatMessage::LOCATION, fn () => $this->locationCard()),
         ];
