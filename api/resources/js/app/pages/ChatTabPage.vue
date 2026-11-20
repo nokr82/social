@@ -62,6 +62,7 @@ async function load() {
 
 /** 광장 목록만 다시 (광장 대화는 개인 채널로 안 오므로 주기적으로) */
 async function loadPlazas() {
+    if (document.hidden) return; // 안 보이는 화면은 갱신 안 함 — 다시 보일 때 onVisible이 바로 받음 (2026-11-20)
     try {
         const pl = await get('/me/plazas');
         plazaRooms.value = pl.data;
@@ -84,14 +85,19 @@ watch(tab, (t) => router.replace({ query: t === 'chats' ? {} : { tab: t } }));
 onMounted(async () => {
     await load();
     plazaTimer = setInterval(loadPlazas, 20_000);
+    document.addEventListener('visibilitychange', onVisible);
     if (auth.me) {
         channelName = `App.Models.User.${auth.me.id}`;
         connectEcho().private(channelName).listen('.dm.sent', onIncoming);
     }
 });
 // 개인 채널은 알림(lib/notify.js)도 같이 쓰므로 leave 금지 → 이 화면의 이벤트만 해제
+function onVisible() {
+    if (!document.hidden) loadPlazas();
+}
 onBeforeUnmount(() => {
     clearInterval(plazaTimer);
+    document.removeEventListener('visibilitychange', onVisible);
     if (channelName) window.Echo?.private(channelName).stopListening('.dm.sent', onIncoming);
 });
 </script>

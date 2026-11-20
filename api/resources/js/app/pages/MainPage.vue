@@ -203,10 +203,25 @@ onMounted(() => {
     loadMe();
     load();
     get('/meta/categories').then((r) => { categories.value = r.data; }).catch(() => {});
-    timer = setInterval(() => load({ silent: true }), 20_000);
+    timer = setInterval(poll, 20_000);
+    document.addEventListener('visibilitychange', onVisible);
 });
+
+/**
+ * 20초 자동 갱신 — 화면이 숨겨졌거나(앱 백그라운드·다른 탭) 검색 중이면 건너뜀.
+ * 왜: 숨은 화면은 아무도 안 보는데 요청 3개를 계속 보냈고, 검색은 전국 정렬(최대 500행)이라 반복하면 비쌈 (2026-11-20)
+ */
+function poll() {
+    if (document.hidden || q.value.trim() || category.value) return;
+    load({ silent: true });
+}
+/** 다시 보이면 바로 한 번 새로 받음 (숨어 있던 동안 멈췄으니) */
+function onVisible() {
+    if (!document.hidden) poll();
+}
 onBeforeUnmount(() => {
     clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisible);
     clearTimeout(typingTimer);
 });
 </script>
