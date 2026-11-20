@@ -8,6 +8,7 @@ use App\Models\ChatRoom;
 use App\Models\Meetup;
 use App\Models\User;
 use App\Services\Photo\ImageProcessor;
+use App\Support\StableUrl;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -58,16 +59,16 @@ class ChatAttachmentService
         return [$meetup->title, ['meetup_id' => $meetup->id]];
     }
 
-    /** 사진 URL (30분). S3/R2는 저장소 서명, 로컬은 우리 서버 서명 라우트 */
+    /** 사진 URL (30~45분). S3/R2는 저장소 서명, 로컬은 우리 서버 서명 라우트. 15분 구간마다 같은 URL(브라우저 캐시용, StableUrl) */
     public function imageUrl(ChatMessage $message): ?string
     {
         $path = $message->meta['path'] ?? null;
         if (! $path) {
             return null;
         }
-        $expires = now()->addMinutes(30);
+        $expires = StableUrl::expiresAt();
         if (config('filesystems.disks.'.config('social.photos.disk').'.driver') === 's3') {
-            return $this->disk()->temporaryUrl($path, $expires);
+            return StableUrl::remember("chat-image:{$message->id}", fn ($exp) => $this->disk()->temporaryUrl($path, $exp));
         }
 
         return URL::temporarySignedRoute('chat-images.file', $expires, ['message' => $message->id], absolute: false);

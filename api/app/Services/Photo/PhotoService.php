@@ -6,6 +6,7 @@ use App\Exceptions\DomainException;
 use App\Models\PhotoLike;
 use App\Models\ProfilePhoto;
 use App\Models\User;
+use App\Support\StableUrl;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -132,13 +133,14 @@ class PhotoService
      * - S3/R2: 저장소가 직접 서명한 임시 URL
      * - 로컬: 우리 서버의 서명 라우트 (/api/photos/{id}/file?signature=...)
      * 공개 URL을 만들지 않으므로, URL을 받은 사람(=권한 확인을 통과한 사람)만 볼 수 있다.
+     * 15분 구간마다 같은 URL(StableUrl) — 매번 바뀌면 브라우저 캐시가 안 먹어 사진을 매번 새로 받음
      */
     public function url(ProfilePhoto $photo): string
     {
-        $expires = now()->addMinutes(30);
+        $expires = StableUrl::expiresAt();
 
         if (config('filesystems.disks.'.config('social.photos.disk').'.driver') === 's3') {
-            return $this->disk()->temporaryUrl($photo->path, $expires);
+            return StableUrl::remember("photo:{$photo->id}:{$photo->path}", fn ($exp) => $this->disk()->temporaryUrl($photo->path, $exp));
         }
 
         // absolute=false: 접속 도메인(social.local 등)이 APP_URL과 달라도 서명이 맞도록 경로만 서명

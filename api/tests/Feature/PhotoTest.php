@@ -127,6 +127,29 @@ class PhotoTest extends TestCase
         $this->actingAs($owner)->getJson('/api/me')->assertJsonPath('data.stats.hearts', 1);
     }
 
+    /** 사진 URL은 15분 구간 안에서 같음(브라우저 캐시) · 구간이 바뀌면 새 URL · 받은 URL은 30분 넘게 유효 */
+    public function test_photo_url_is_stable_within_window(): void
+    {
+        $owner = User::factory()->complete()->create();
+        $this->upload($owner);
+        $url = fn () => $this->actingAs($owner)->getJson('/api/me/photos')->json('data.0.url');
+
+        $this->travelTo(now()->startOfHour()->addMinutes(1));
+        $first = $url();
+        $this->travel(5)->minutes();
+        $this->assertSame($first, $url()); // 전엔 1초만 지나도 달라졌음
+
+        $this->travelTo(now()->startOfHour()->addMinutes(16)); // 다음 15분 구간
+        $second = $url();
+        $this->assertNotSame($first, $second);
+
+        // 처음 받은 URL은 받은 지 30분이 지나도 아직 열림 (만료 = 구간 끝 + 30분 = :45)
+        $this->travelTo(now()->startOfHour()->addMinutes(40));
+        $this->get($first)->assertOk();
+        $this->travelTo(now()->startOfHour()->addMinutes(46));
+        $this->get($first)->assertForbidden();
+    }
+
     /** 사진 파일은 서명 URL로만 열린다 */
     public function test_file_requires_signature(): void
     {
